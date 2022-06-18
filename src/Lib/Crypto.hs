@@ -1,14 +1,17 @@
 module Lib.Crypto
   ( base64Encode,
+    BitVec(..),
     byteEncode,
     englishScore,
     hexDecode,
     hexEncode,
+    repeatingKeyXor,
   )
 where
 
-import Data.Bit (Bit, castFromWords8, cloneToWords8)
-import Data.Char (chr, digitToInt, ord)
+import Data.Bit (Bit, castFromWords8, cloneToWords8, reverseBits, zipBits)
+import Data.Bits (xor)
+import Data.Char (chr, digitToInt, ord, toUpper)
 import qualified Data.Map as M
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
@@ -66,19 +69,29 @@ base64Encode v = V.toList $ V.mapMaybe (`M.lookup` reversedMap) words
     reversedMap = reverseMap base64Map
     words = V.concatMap (convert . cloneToWords8 . UV.reverse) (chunkBy 6 v)
 
+byteDecode :: String -> BitVec
+byteDecode s = reverseBits $ castFromWords8 (UV.fromList $ fromIntegral . ord <$> P.reverse s)
+
 byteEncode :: BitVec -> String
 byteEncode = UV.toList . UV.reverse . UV.map (chr . fromIntegral) . cloneToWords8 . UV.reverse
 
 englishScore :: String -> Int
-englishScore = P.sum . P.map (score . ord)
+englishScore = P.sum . P.map (score . toUpper)
   where
     score i
-      | i < 32 = 0
-      | i < 33 = 2 -- space
-      | i < 48 = 1 -- !"#$%&\'()*+,-./
-      | i < 58 = 2 -- 0123456789
-      | i < 65 = 1 -- :;<=>?@
-      | i < 91 = 4 -- A - Z
-      | i < 97 = 1 -- [\]^_`
-      | i < 123 = 4 -- a - z
+      | i `P.elem` "E" = 12
+      | i `P.elem` "T" = 9
+      | i `P.elem` "AINOS" = 8
+      | i `P.elem` "HR " = 6
+      | i `P.elem` "DL" = 4
+      | i `P.elem` "UCMF" = 3
+      | i `P.elem` "WYGPB" = 2
+      | i `P.elem` "VK" = 2
+      | i `P.elem` "QJXZ" = 2
       | otherwise = 0
+
+repeatingKeyXor :: String -> String -> BitVec
+repeatingKeyXor key s = UV.fromList $ P.zipWith xor s' (cycle key')
+  where
+    key' = UV.toList $ byteDecode key
+    s' = UV.toList $ byteDecode s

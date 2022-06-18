@@ -5,7 +5,7 @@ import Data.Bit (castFromWords8, zipBits)
 import Data.Bits (shiftL, xor)
 import Data.Char (chr)
 import Data.Function
-import Data.List (maximumBy)
+import Data.List (maximumBy, sortBy)
 import Data.Monoid
 import Data.Vector.Unboxed as UV
 import Lib.Crypto
@@ -32,16 +32,40 @@ challenge2 =
         assertEqual "Challenge 2" output xord
     )
 
+
+allSingleCharXors :: String -> [BitVec]
+allSingleCharXors s = [bits `xor` x | x <- singleChars]
+  where
+    bits = hexDecode s
+    lenBytes = UV.length bits `div` 8
+    singleChars = [UV.reverse $ castFromWords8 (UV.fromList (P.replicate lenBytes i)) | i <- [0..255]]
+
 challenge3 =
   TestCase
     ( do
-        let bits = hexDecode "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736"
-        let k = UV.length bits `div` 8
-        let singleChars = [UV.reverse $ castFromWords8 (UV.fromList (P.replicate k i)) | i <- [0..255]]
-        let xors = [bits `xor` x | x <- singleChars]
-        let candidates = P.map byteEncode xors
+        let xors = allSingleCharXors "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736"
+        let candidates = byteEncode <$> xors
         let winner = Data.List.maximumBy (compare `on` englishScore) candidates
         assertEqual "Challenge 3" "Cooking MC's like a pound of bacon" winner
+    )
+
+challenge4 =
+  TestCase
+    ( do
+        -- TODO could probably make it faster
+        input <- lines <$> readFile "static/4.txt"
+        let candidates = byteEncode <$> P.concatMap allSingleCharXors input
+        let winner = Data.List.maximumBy (compare `on` englishScore) candidates
+        assertEqual "Challenge 4" "Now that the party is jumping\n" winner
+    )
+
+challenge5 =
+  TestCase
+    ( do
+        let input = "Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal"
+        let key = "ICE"
+        let expected = "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"
+        assertEqual "Challenge 4" expected (hexEncode $ repeatingKeyXor key input)
     )
 
 main :: IO ()
@@ -50,7 +74,9 @@ main = do
         TestList
           [ challenge1,
             challenge2,
-            challenge3
+            challenge3,
+            challenge4,
+            challenge5
           ]
   runTestTT tests
   return ()
