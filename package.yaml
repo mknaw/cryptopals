@@ -24,6 +24,7 @@ dependencies:
 - bitvec
 - containers
 - HUnit
+- split # TODO probably could really do without this...
 - vector
 
 library:

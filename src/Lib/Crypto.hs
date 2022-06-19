@@ -1,26 +1,35 @@
 module Lib.Crypto
-  ( base64Encode,
-    BitVec(..),
+  ( base64Decode,
+    base64Encode,
+    byteDecode,
     byteEncode,
     englishScore,
+    hammingDistance,
     hexDecode,
     hexEncode,
     repeatingKeyXor,
+    sampleBytesDistance,
+    SingleCharXorSolution (..),
+    singleCharXorSolver,
+    transposeBytes,
   )
 where
 
 import Data.Bit (Bit, castFromWords8, cloneToWords8, reverseBits, zipBits)
 import Data.Bits (xor)
 import Data.Char (chr, digitToInt, ord, toUpper)
-import qualified Data.Map as M
+import Data.Function
+import Data.List (maximumBy, transpose)
+import Data.List.Split (chunksOf)
+import qualified Data.Map as M hiding (mapMaybe)
+import qualified Data.Maybe as M (mapMaybe)
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
 import Data.Word (Word8)
-import Lib.Util (chunkBy, reverseMap)
+import Lib.Util
+import Text.Printf (vFmt)
 import Prelude hiding ((++))
 import qualified Prelude as P
-
-type BitVec = UV.Vector Bit
 
 hexDecode :: String -> BitVec
 hexDecode = UV.reverse . P.foldr (go . charToWord8) UV.empty
@@ -61,7 +70,12 @@ base64Map = M.fromList [(f k, k) | k <- [0 .. 63]]
       | otherwise = '/'
 
 base64Decode :: String -> BitVec
-base64Decode = castFromWords8 . UV.mapMaybe (`M.lookup` base64Map) . UV.fromList
+base64Decode s = v'
+  where
+    v = UV.concat . P.map (pad 6 . intToBitVec . fromIntegral) . M.mapMaybe (`M.lookup` base64Map) $ s
+    -- Discard any padding
+    len = UV.length v
+    v' = UV.take (len - len `mod` 8) v
 
 base64Encode :: BitVec -> String
 base64Encode v = V.toList $ V.mapMaybe (`M.lookup` reversedMap) words
@@ -79,6 +93,7 @@ englishScore :: String -> Int
 englishScore = P.sum . P.map (score . toUpper)
   where
     score i
+      -- Weighted by approximate frequency in English text.
       | i `P.elem` "E" = 12
       | i `P.elem` "T" = 9
       | i `P.elem` "AINOS" = 8
@@ -88,10 +103,49 @@ englishScore = P.sum . P.map (score . toUpper)
       | i `P.elem` "WYGPB" = 2
       | i `P.elem` "VK" = 2
       | i `P.elem` "QJXZ" = 2
+      | ord i < 20 = -10
       | otherwise = 0
+
+allSingleCharXors :: BitVec -> [BitVec]
+allSingleCharXors vec = [vec `xor` x | x <- singleChars]
+  where
+    lenBytes = UV.length vec `div` 8
+    singleChars = [UV.reverse $ castFromWords8 (UV.fromList (P.replicate lenBytes i)) | i <- [0 .. 255]]
+
+data SingleCharXorSolution = SingleCharXorSolution
+  { _decoded :: String,
+    _score :: Int,
+    _char :: Char
+  }
+
+singleCharXorSolver :: BitVec -> SingleCharXorSolution
+singleCharXorSolver v = Data.List.maximumBy (compare `on` _score) scored
+  where
+    candidates = byteEncode <$> allSingleCharXors v
+    toSolution (d, s, c) = SingleCharXorSolution {_decoded = d, _score = s, _char = c}
+    scored = P.map toSolution $ P.zip3 candidates (englishScore <$> candidates) [chr i | i <- [0 .. 255]]
 
 repeatingKeyXor :: String -> String -> BitVec
 repeatingKeyXor key s = UV.fromList $ P.zipWith xor s' (cycle key')
   where
     key' = UV.toList $ byteDecode key
     s' = UV.toList $ byteDecode s
+
+hammingDistance :: BitVec -> BitVec -> Int
+hammingDistance a b = UV.sum (UV.zipWith isDifferent a b)
+  where
+    isDifferent :: Bit -> Bit -> Int
+    isDifferent x y = if x == y then 0 else 1
+
+sampleBytesDistance :: Int -> BitVec -> Float
+sampleBytesDistance keySize v = fromIntegral s / fromIntegral keySize
+  where
+    -- Would blow up for a small `BitVec`, but whatever
+    a : b : c : d : _ = V.toList $ chunkBy (keySize * 8) v
+    s = P.sum [hammingDistance x y | x <- [a, b, c, d], y <- [a, b, c, d], x /= y]
+
+transposeBytes :: Int -> BitVec -> V.Vector BitVec
+transposeBytes keySize v = V.fromList $ UV.concat <$> chunks
+  where
+    -- TODO there's probably a faster, `Vector`-oriented way to do this, without going to list.
+    chunks = transpose $ chunksOf keySize $ V.toList (chunkBy 8 v)
