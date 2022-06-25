@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 64d1b46d5b42a17909267777a5cf3337f96563902909c00d1c397f2cd5b4aa24
+-- hash: 5753eb1fa13bbbae0c498f635c64b8d23426ff0a55b58c05b60337e08505bf67
 
 name:           cryptopals
 version:        0.1.0.0
@@ -36,6 +36,8 @@ library
       HUnit
     , base >=4.7 && <5
     , bitvec
+    , bytestring
+    , cipher-aes
     , containers
     , split
     , vector
@@ -52,6 +54,8 @@ executable cryptopals-exe
       HUnit
     , base >=4.7 && <5
     , bitvec
+    , bytestring
+    , cipher-aes
     , containers
     , cryptopals
     , split
@@ -70,6 +74,8 @@ test-suite cryptopals-test
       HUnit
     , base >=4.7 && <5
     , bitvec
+    , bytestring
+    , cipher-aes
     , containers
     , cryptopals
     , split

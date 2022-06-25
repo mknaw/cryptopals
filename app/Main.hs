@@ -1,8 +1,10 @@
 module Main where
 
 import Control.Monad
+import Crypto.Cipher.AES (decryptECB, initAES)
 import Data.Bit (castFromWords8, zipBits)
 import Data.Bits (shiftL, xor)
+import qualified Data.ByteString.Char8 as C8
 import Data.Char (chr)
 import Data.Function
 import Data.List (maximumBy, sortBy)
@@ -71,6 +73,13 @@ challenge6 = do
 
   assertEqual "Challenge 6" "Terminator X: Bring the noise" key
 
+challenge7 :: Assertion
+challenge7 = do
+  ciphertext <- C8.pack . byteEncode . base64Decode . P.concat . P.lines <$> readFile "static/7.txt"
+  let key = initAES . C8.pack $ "YELLOW SUBMARINE"
+  let decrypted = decryptECB key ciphertext
+  assertEqual "Challenge 7" "I'm back and I'm ringin' the bell " (C8.unpack . P.head . C8.lines $ decrypted)
+
 main :: IO ()
 main = do
   let tests =
@@ -80,7 +89,8 @@ main = do
             TestCase challenge3,
             TestCase challenge4,
             TestCase challenge5,
-            TestCase challenge6
+            TestCase challenge6,
+            TestCase challenge7
           ]
   runTestTT tests
   return ()
