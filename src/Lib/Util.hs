@@ -3,6 +3,7 @@ module Lib.Util
     chunkBy,
     intToBitVec,
     pad,
+    padEOT,
     reverseMap,
   )
 where
@@ -12,6 +13,8 @@ import Data.Bits (shiftR)
 import qualified Data.Map as M
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
+import Data.ByteString (ByteString)
+import Data.ByteString as B
 
 type BitVec = UV.Vector Bit
 
@@ -28,6 +31,12 @@ pad k v | diff <= 0 = v
         | otherwise = UV.replicate diff (Bit False) UV.++ v
   where
     diff = k - UV.length v
+
+padEOT :: Int -> ByteString -> ByteString
+padEOT k b | B.length b < k = B.append b (B.replicate diff 4)
+           | otherwise = undefined
+  where
+    diff = k - B.length b
 
 -- TODO would be nice if we didn't have to do the Unbox / Box stuff
 -- but dunno how to provide an output type

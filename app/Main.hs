@@ -4,6 +4,7 @@ import Control.Monad
 import Crypto.Cipher.AES (decryptECB, encryptECB, initAES)
 import Data.Bit (castFromWords8, zipBits)
 import Data.Bits (shiftL, xor)
+import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C8
 import Data.Char (chr)
 import Data.Function
@@ -13,7 +14,7 @@ import Data.Monoid
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
 import Lib.Crypto
-import Lib.Util (chunkBy)
+import Lib.Util (chunkBy, padEOT)
 import Test.HUnit
 import Prelude hiding ((++))
 import qualified Prelude as P
@@ -91,6 +92,11 @@ challenge8 = do
   let winner = hexEncode . byteDecode . P.concat $ chunkedWinner
   assertEqual "Challenge 8" "d880" (P.take 4 winner)
 
+challenge9 :: Assertion
+challenge9 = do
+  let padded = padEOT 20 (C8.pack "YELLOW SUBMARINE")
+  assertEqual "Challenge 9" (C8.pack "YELLOW SUBMARINE\EOT\EOT\EOT\EOT") padded
+
 main :: IO ()
 main = do
   let tests =
@@ -102,7 +108,8 @@ main = do
             TestCase challenge5,
             TestCase challenge6,
             TestCase challenge7,
-            TestCase challenge8
+            TestCase challenge8,
+            TestCase challenge9
           ]
   runTestTT tests
   return ()
