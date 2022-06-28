@@ -1,5 +1,6 @@
 module Lib.Util
   ( BitVec (..),
+    byteStringXor,
     chunkBy,
     intToBitVec,
     pad,
@@ -9,7 +10,8 @@ module Lib.Util
 where
 
 import Data.Bit (Bit (..), castFromWords8, cloneToWords8)
-import Data.Bits (shiftR)
+import Data.Bits (shiftR, xor)
+import qualified Data.ByteString.Char8 as C8
 import qualified Data.Map as M
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
@@ -54,3 +56,6 @@ chunkBy k v = V.reverse $ chunkBy' V.empty k v
 
 reverseMap :: (Ord a, Ord b) => M.Map a b -> M.Map b a
 reverseMap m = M.fromList [(v, k) | (k, v) <- M.toList m]
+
+byteStringXor :: ByteString -> ByteString -> ByteString
+byteStringXor a b = B.pack $ B.zipWith xor a b

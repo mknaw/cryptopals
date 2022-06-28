@@ -14,7 +14,7 @@ import Data.Monoid
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
 import Lib.Crypto
-import Lib.Util (chunkBy, padEOT)
+import Lib.Util (byteStringXor, chunkBy, padEOT)
 import Test.HUnit
 import Prelude hiding ((++))
 import qualified Prelude as P
@@ -97,6 +97,14 @@ challenge9 = do
   let padded = padEOT 20 (C8.pack "YELLOW SUBMARINE")
   assertEqual "Challenge 9" (C8.pack "YELLOW SUBMARINE\EOT\EOT\EOT\EOT") padded
 
+challenge10 :: Assertion
+challenge10 = do
+  cipher <- C8.pack . byteEncode . base64Decode . P.concat . lines <$> readFile "static/10.txt"
+  let iv = B.replicate 16 0
+  let key = C8.pack "YELLOW SUBMARINE"
+  let decrypted = decryptCBCManual iv key cipher
+  assertEqual "Challenge 10" "I'm back and I'm ringin' the bell " (C8.unpack . P.head . C8.lines $ decrypted)
+
 main :: IO ()
 main = do
   let tests =
@@ -109,7 +117,8 @@ main = do
             TestCase challenge6,
             TestCase challenge7,
             TestCase challenge8,
-            TestCase challenge9
+            TestCase challenge9,
+            TestCase challenge10
           ]
   runTestTT tests
   return ()

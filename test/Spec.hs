@@ -1,4 +1,5 @@
 import Data.Bit
+import qualified Data.ByteString.Char8 as C8
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
 import Lib.Crypto
@@ -6,6 +7,8 @@ import Lib.Util
 import Test.HUnit
 import Prelude
 import qualified Prelude as P
+import Crypto.Cipher.AES (decryptECB, initAES)
+import Data.List.Split (chunksOf)
 
 charToBit c
   | c == '0' = Bit False
@@ -66,6 +69,16 @@ test_transposeBytes = do
   let expected = "dbeeaedf"
   assertEqual "transposeBytes" expected (byteEncode . UV.concat . V.toList . transposeBytes 4 $ input)
 
+test_manualCBC :: Assertion
+test_manualCBC = do
+  let plain = C8.pack "lorem ipsum dolor sit amet, cons"
+  let iv = C8.pack "deadbeefdeadbeef"
+  let key = C8.pack "yellow submarine"
+  let cipher = encryptCBCManual iv key plain
+  let decrypted = decryptCBCManual iv key cipher
+  assertEqual "manualCBC" plain decrypted
+
+
 main :: IO ()
 main = do
   let tests =
@@ -77,7 +90,8 @@ main = do
             TestCase test_byteEncode,
             TestCase test_base64Decode,
             TestCase test_hammingDistance,
-            TestCase test_transposeBytes
+            TestCase test_transposeBytes,
+            TestCase test_manualCBC
           ]
   runTestTT tests
   return ()

@@ -3,6 +3,8 @@ module Lib.Crypto
     base64Encode,
     byteDecode,
     byteEncode,
+    decryptCBCManual,
+    encryptCBCManual,
     englishScore,
     hammingDistance,
     hexDecode,
@@ -15,8 +17,12 @@ module Lib.Crypto
   )
 where
 
+import Crypto.Cipher.AES (decryptECB, encryptECB, initAES)
 import Data.Bit (Bit, castFromWords8, cloneToWords8, reverseBits, zipBits)
 import Data.Bits (xor)
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as C8
 import Data.Char (chr, digitToInt, ord, toUpper)
 import Data.Function
 import Data.List (maximumBy, transpose)
@@ -149,3 +155,19 @@ transposeBytes keySize v = V.fromList $ UV.concat <$> chunks
   where
     -- TODO there's probably a faster, `Vector`-oriented way to do this, without going to list.
     chunks = transpose $ chunksOf keySize $ V.toList (chunkBy 8 v)
+
+encryptCBCManual :: ByteString -> ByteString -> ByteString -> ByteString
+encryptCBCManual iv key p = B.concat . P.tail $ P.scanl go iv p'
+  where
+    key' = initAES key
+    p' = fmap C8.pack . chunksOf 16 . C8.unpack $ p
+
+    go :: ByteString -> ByteString -> ByteString
+    go prev next = encryptECB key' (byteStringXor prev next)
+
+decryptCBCManual :: ByteString -> ByteString -> ByteString -> ByteString
+decryptCBCManual iv key c = byteStringXor cipherShifted c'
+  where
+    key' = initAES key
+    c' = decryptECB key' c
+    cipherShifted = B.append iv (B.take (B.length c - B.length iv) c)
