@@ -1,13 +1,14 @@
 module Main where
 
 import Control.Monad
-import Crypto.Cipher.AES (decryptECB, initAES)
+import Crypto.Cipher.AES (decryptECB, encryptECB, initAES)
 import Data.Bit (castFromWords8, zipBits)
 import Data.Bits (shiftL, xor)
 import qualified Data.ByteString.Char8 as C8
 import Data.Char (chr)
 import Data.Function
-import Data.List (maximumBy, sortBy)
+import qualified Data.List as L (maximumBy, nub, sortBy)
+import Data.List.Split (chunksOf)
 import Data.Monoid
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
@@ -44,7 +45,7 @@ challenge4 :: Assertion
 challenge4 = do
   -- TODO could probably make it faster
   hexes <- P.map hexDecode . lines <$> readFile "static/4.txt"
-  let winner = _decoded $ Data.List.maximumBy (compare `on` _score) (singleCharXorSolver <$> hexes)
+  let winner = _decoded $ L.maximumBy (compare `on` _score) (singleCharXorSolver <$> hexes)
   assertEqual "Challenge 4" "Now that the party is jumping\n" winner
 
 challenge5 :: Assertion
@@ -61,7 +62,7 @@ challenge5 = do
 challenge6 :: Assertion
 challenge6 = do
   vec <- base64Decode . P.concat . P.lines <$> readFile "static/6.txt"
-  let keySizes = P.take 3 $ sortBy (compare `on` flip sampleBytesDistance vec) [2 .. 40]
+  let keySizes = P.take 3 $ L.sortBy (compare `on` flip sampleBytesDistance vec) [2 .. 40]
   let candidates = do
         keySize <- keySizes
         let t = transposeBytes keySize vec
@@ -69,7 +70,7 @@ challenge6 = do
         let score = V.sum $ V.map _score solved
         let chars = V.toList $ V.map _char solved
         return (score, chars)
-  let (_, key) = Data.List.maximumBy (compare `on` fst) candidates
+  let (_, key) = L.maximumBy (compare `on` fst) candidates
 
   assertEqual "Challenge 6" "Terminator X: Bring the noise" key
 
@@ -79,6 +80,16 @@ challenge7 = do
   let key = initAES . C8.pack $ "YELLOW SUBMARINE"
   let decrypted = decryptECB key ciphertext
   assertEqual "Challenge 7" "I'm back and I'm ringin' the bell " (C8.unpack . P.head . C8.lines $ decrypted)
+
+challenge8 :: Assertion
+challenge8 = do
+  chunkedCipher <-
+    fmap (chunksOf 16 . C8.unpack . C8.pack . byteEncode . hexDecode) . P.lines <$> readFile "static/8.txt"
+  let repeats = (\x -> P.length x - P.length (L.nub x)) <$> chunkedCipher
+  let (winnerRepeats, chunkedWinner) = L.maximumBy (compare `on` fst) (P.zip repeats chunkedCipher)
+  assertBool "Challenge 8" (winnerRepeats > 0)
+  let winner = hexEncode . byteDecode . P.concat $ chunkedWinner
+  assertEqual "Challenge 8" "d880" (P.take 4 winner)
 
 main :: IO ()
 main = do
@@ -90,7 +101,8 @@ main = do
             TestCase challenge4,
             TestCase challenge5,
             TestCase challenge6,
-            TestCase challenge7
+            TestCase challenge7,
+            TestCase challenge8
           ]
   runTestTT tests
   return ()
