@@ -26,7 +26,8 @@ dependencies:
 - cipher-aes
 - containers
 - HUnit
-- split # TODO probably could really do without this...
+- random
+- split
 - vector
 
 library:

@@ -4,17 +4,19 @@ import Control.Monad
 import Crypto.Cipher.AES (decryptECB, encryptECB, initAES)
 import Data.Bit (castFromWords8, zipBits)
 import Data.Bits (shiftL, xor)
+import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C8
 import Data.Char (chr)
 import Data.Function
-import qualified Data.List as L (maximumBy, nub, sortBy)
+import qualified Data.List as L
 import Data.List.Split (chunksOf)
 import Data.Monoid
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
 import Lib.Crypto
-import Lib.Util (byteStringXor, chunkBy, padEOT)
+import Lib.Util
+import System.Random (randomRIO)
 import Test.HUnit
 import Prelude hiding ((++))
 import qualified Prelude as P
@@ -84,12 +86,11 @@ challenge7 = do
 
 challenge8 :: Assertion
 challenge8 = do
-  chunkedCipher <-
-    fmap (chunksOf 16 . C8.unpack . C8.pack . byteEncode . hexDecode) . P.lines <$> readFile "static/8.txt"
-  let repeats = (\x -> P.length x - P.length (L.nub x)) <$> chunkedCipher
-  let (winnerRepeats, chunkedWinner) = L.maximumBy (compare `on` fst) (P.zip repeats chunkedCipher)
+  inputs <- P.lines <$> readFile "static/8.txt"
+  let chunkedCipher = C8.pack . byteEncode . hexDecode <$> inputs
+  let repeats = countDupeChunksOf 16 <$> chunkedCipher
+  let (winnerRepeats, winner) = L.maximumBy (compare `on` fst) (P.zip repeats inputs)
   assertBool "Challenge 8" (winnerRepeats > 0)
-  let winner = hexEncode . byteDecode . P.concat $ chunkedWinner
   assertEqual "Challenge 8" "d880" (P.take 4 winner)
 
 challenge9 :: Assertion
@@ -105,6 +106,27 @@ challenge10 = do
   let decrypted = decryptCBCManual iv key cipher
   assertEqual "Challenge 10" "I'm back and I'm ringin' the bell " (C8.unpack . P.head . C8.lines $ decrypted)
 
+encryptChallenge11 :: ByteString -> IO (Bool, ByteString)
+encryptChallenge11 plaintext = do
+  iv <- randomByteString 16
+  key <- randomByteString 16
+  paddingLength <- randomRIO (5, 10)
+  padding <- randomByteString paddingLength
+  let plaintext' = padEOTToMultipleOf 16 $ B.concat [padding, plaintext, padding]
+  useCBC <- coinFlip
+  let cipher =
+        if useCBC
+          then encryptCBCManual iv key plaintext'
+          else encryptECB (initAES key) plaintext'
+
+  return (useCBC, cipher)
+
+challenge11 :: Assertion
+challenge11 = do
+  (usedCBC, cipher) <- encryptChallenge11 (C8.replicate 48 'A')
+  let guessCBC = countDupeChunksOf 16 cipher == 0
+  assertEqual "Challenge 11" usedCBC guessCBC
+
 main :: IO ()
 main = do
   let tests =
@@ -118,7 +140,8 @@ main = do
             TestCase challenge7,
             TestCase challenge8,
             TestCase challenge9,
-            TestCase challenge10
+            TestCase challenge10,
+            TestCase challenge11
           ]
   runTestTT tests
   return ()

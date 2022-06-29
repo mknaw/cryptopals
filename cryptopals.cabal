@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 5753eb1fa13bbbae0c498f635c64b8d23426ff0a55b58c05b60337e08505bf67
+-- hash: 9bf7cce71b5fa1f2d00b0e663a3d7d17a10d936b13cef084c6b09c2f0eed5cff
 
 name:           cryptopals
 version:        0.1.0.0
@@ -39,6 +39,7 @@ library
     , bytestring
     , cipher-aes
     , containers
+    , random
     , split
     , vector
   default-language: Haskell2010
@@ -58,6 +59,7 @@ executable cryptopals-exe
     , cipher-aes
     , containers
     , cryptopals
+    , random
     , split
     , vector
   default-language: Haskell2010
@@ -78,6 +80,7 @@ test-suite cryptopals-test
     , cipher-aes
     , containers
     , cryptopals
+    , random
     , split
     , vector
   default-language: Haskell2010
