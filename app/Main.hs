@@ -16,7 +16,7 @@ import Data.Vector as V
 import Data.Vector.Unboxed as UV
 import Lib.Crypto
 import Lib.Util
-import System.Random (randomRIO)
+import System.Random (Random (randomR), mkStdGen, randomRIO)
 import Test.HUnit
 import Prelude hiding ((++))
 import qualified Prelude as P
@@ -56,10 +56,8 @@ challenge5 = do
   let input = "Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal"
   let key = "ICE"
   let expected =
-        "0b3637272a2b2e63622c2e69692a23693a2a3\
-        \c6324202d623d63343c2a2622632427276527\
-        \2a282b2f20430a652e2c652a3124333a653e2\
-        \b2027630c692b20283165286326302e27282f"
+        "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a2622632427276527\
+        \2a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"
   assertEqual "Challenge 5" expected (hexEncode $ repeatingKeyXor key input)
 
 challenge6 :: Assertion
@@ -121,11 +119,56 @@ encryptChallenge11 plaintext = do
 
   return (useCBC, cipher)
 
+guessECB :: ByteString -> Bool
+guessECB b = countDupeChunksOf 16 b > 0
+
+guessCBC :: ByteString -> Bool
+guessCBC = not . guessECB
+
 challenge11 :: Assertion
 challenge11 = do
   (usedCBC, cipher) <- encryptChallenge11 (C8.replicate 48 'A')
-  let guessCBC = countDupeChunksOf 16 cipher == 0
-  assertEqual "Challenge 11" usedCBC guessCBC
+  assertEqual "Challenge 11" usedCBC (guessCBC cipher)
+
+challenge12Encrypt :: ByteString -> ByteString
+challenge12Encrypt plaintext = encryptECB key plaintext'
+  where
+    key = initAES . B.pack . P.take 16 . L.unfoldr (Just . randomR (0, 255)) $ mkStdGen 300
+    unknown =
+      C8.pack . byteEncode . base64Decode $
+        "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGll\
+        \cyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK"
+    plaintext' = padEOTToMultipleOf 16 $ B.append plaintext unknown
+
+challenge12Decrypt :: Int -> Int -> ByteString
+challenge12Decrypt blockSize len = challenge12Decrypt' blockSize len B.empty
+
+challenge12Decrypt' :: Int -> Int -> ByteString -> ByteString
+challenge12Decrypt' blockSize cipherLen matched
+  | cipherLen == B.length matched = matched
+  | otherwise = challenge12Decrypt' blockSize cipherLen (B.concat [matched, match])
+  where
+    blockNumber = (cipherLen - B.length matched - 1) `div` blockSize
+    getBlock = B.take blockSize . B.drop (blockNumber * blockSize)
+    input = C8.replicate (cipherLen - B.length matched - 1) 'A'
+    res = getBlock . challenge12Encrypt $ input
+    match = P.head $ do
+      c <- B.pack . L.singleton <$> [0 .. 255]
+      let candidate = getBlock . challenge12Encrypt $ B.concat [input, matched, c]
+      if candidate == res
+        then return c
+        else mempty
+
+challenge12 :: Assertion
+challenge12 = do
+  let ciphers = [challenge12Encrypt $ C8.replicate k 'A' | k <- [0 ..]]
+  let lengths = B.length <$> ciphers
+  let blockSize = P.head . P.dropWhile (== 0) $ P.zipWith (-) (P.tail lengths) lengths
+  assertEqual "Challenge 12 - blockSize discovery" 16 blockSize
+  assertEqual "Challenge 12 - detect ECB" True (guessECB $ ciphers !! (2 * blockSize))
+  let cipherLen = P.head lengths
+  let decrypted = C8.unpack . B.filter (/= 0) $ challenge12Decrypt blockSize cipherLen
+  assertEqual "Challenge 12" "Rollin' in my 5." decrypted
 
 main :: IO ()
 main = do
@@ -141,7 +184,8 @@ main = do
             TestCase challenge8,
             TestCase challenge9,
             TestCase challenge10,
-            TestCase challenge11
+            TestCase challenge11,
+            TestCase challenge12
           ]
   runTestTT tests
   return ()
