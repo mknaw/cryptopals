@@ -1,16 +1,18 @@
 module Main where
 
 import Control.Monad
-import Crypto.Cipher.AES (decryptECB, encryptECB, initAES)
+import Crypto.Cipher.AES (AES, decryptECB, encryptECB, initAES)
 import Data.Bit (castFromWords8, zipBits)
 import Data.Bits (shiftL, xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C8
 import Data.Char (chr)
+import Data.Either
 import Data.Function
 import qualified Data.List as L
 import Data.List.Split (chunksOf)
+import Data.Map as M
 import Data.Monoid
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
@@ -130,10 +132,13 @@ challenge11 = do
   (usedCBC, cipher) <- encryptChallenge11 (C8.replicate 48 'A')
   assertEqual "Challenge 11" usedCBC (guessCBC cipher)
 
+seededKey :: Int -> AES
+seededKey = initAES . B.pack . P.take 16 . L.unfoldr (Just . randomR (0, 255)) . mkStdGen
+
 challenge12Encrypt :: ByteString -> ByteString
 challenge12Encrypt plaintext = encryptECB key plaintext'
   where
-    key = initAES . B.pack . P.take 16 . L.unfoldr (Just . randomR (0, 255)) $ mkStdGen 300
+    key = seededKey 300
     unknown =
       C8.pack . byteEncode . base64Decode $
         "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGll\
@@ -170,6 +175,41 @@ challenge12 = do
   let decrypted = C8.unpack . B.filter (/= 0) $ challenge12Decrypt blockSize cipherLen
   assertEqual "Challenge 12" "Rollin' in my 5." decrypted
 
+challenge13Key :: AES
+challenge13Key = seededKey 666
+
+challenge13Encrypt :: ByteString -> ByteString
+challenge13Encrypt plaintext = encryptECB challenge13Key plaintext'
+  where
+    plaintext' = padEOTToMultipleOf 16 (profileFor plaintext)
+
+challenge13Decrypt :: ByteString -> M.Map String String
+challenge13Decrypt cipher = fromRight M.empty (parseCookie $ C8.unpack decrypted')
+  where
+    decrypted = decryptECB challenge13Key cipher
+    decrypted' = B.reverse . B.dropWhile (== 0) . B.reverse $ decrypted
+
+challenge13 :: Assertion
+challenge13 = do
+  let input = "foo=bar&baz=qux&zap=zazzle"
+  let parsed = fromRight M.empty (parseCookie input)
+  let expected = M.fromList [("foo", "bar"), ("baz", "qux"), ("zap", "zazzle")]
+  assertEqual "Challenge 13 - parse cookies" expected parsed
+  let encoded = profileFor . C8.pack $ "foo@bar.com"
+  assertEqual "Challenge 13 - encode profile" (C8.pack "email=foo@bar.com&uid=10&role=user") encoded
+
+  -- email=hello@sup. admin            com&uid=10&role= user
+  -- ................ ................ ................ ................
+  let input = B.concat [C8.pack "hello@sup.admin", B.replicate (16 - 5) 0, C8.pack "com"]
+  let cipher = challenge13Encrypt input
+  let fakeCipher =
+        B.concat
+          [ B.take 16 cipher, -- email=hello@sup.
+            B.take 16 (B.drop 32 cipher), -- com&uid=10&role=
+            B.take 16 (B.drop 16 cipher) -- admin
+          ]
+  assertEqual "Challenge 13" (Just "admin") (M.lookup "role" (challenge13Decrypt fakeCipher))
+
 main :: IO ()
 main = do
   let tests =
@@ -185,7 +225,8 @@ main = do
             TestCase challenge9,
             TestCase challenge10,
             TestCase challenge11,
-            TestCase challenge12
+            TestCase challenge12,
+            TestCase challenge13
           ]
   runTestTT tests
   return ()

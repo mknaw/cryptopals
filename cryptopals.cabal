@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9bf7cce71b5fa1f2d00b0e663a3d7d17a10d936b13cef084c6b09c2f0eed5cff
+-- hash: 1da360ab181237a6fd80ac4e2a5da1b18f2a9815ec9ccfda5d8149e93736369a
 
 name:           cryptopals
 version:        0.1.0.0
@@ -39,6 +39,7 @@ library
     , bytestring
     , cipher-aes
     , containers
+    , parsec
     , random
     , split
     , vector
@@ -59,6 +60,7 @@ executable cryptopals-exe
     , cipher-aes
     , containers
     , cryptopals
+    , parsec
     , random
     , split
     , vector
@@ -80,6 +82,7 @@ test-suite cryptopals-test
     , cipher-aes
     , containers
     , cryptopals
+    , parsec
     , random
     , split
     , vector

@@ -8,6 +8,8 @@ module Lib.Util
     pad,
     padEOT,
     padEOTToMultipleOf,
+    parseCookie,
+    profileFor,
     randomByteString,
     reverseMap,
   )
@@ -26,6 +28,7 @@ import Data.Vector as V
 import Data.Vector.Unboxed as UV
 import Data.Word (Word8)
 import System.Random (randomIO)
+import Text.ParserCombinators.Parsec
 import Prelude as P
 
 type BitVec = UV.Vector Bit
@@ -92,3 +95,21 @@ randomByteString k = do
 coinFlip :: IO Bool
 coinFlip = do
   randomIO :: IO Bool
+
+parseCookie :: String -> Either ParseError (M.Map String String)
+parseCookie = parse cookieMap "(unknown)"
+  where
+    cookieMap :: GenParser Char st (M.Map String String)
+    cookieMap = do
+      let cookiePair = do
+            let token = many1 (noneOf "&=")
+            k <- token
+            v <- char '=' >> token
+            return (k, v)
+      M.fromList <$> sepBy cookiePair (char '&')
+
+cleanForCookieEncode :: String -> String
+cleanForCookieEncode = P.filter (`P.notElem` ['=', '&'])
+
+profileFor :: ByteString -> ByteString
+profileFor email = B.concat [C8.pack "email=", email, C8.pack "&uid=10&role=user"]
