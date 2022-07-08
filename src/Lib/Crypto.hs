@@ -25,13 +25,14 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C8
 import Data.Char (chr, digitToInt, ord, toUpper)
 import Data.Function
-import Data.List (maximumBy, transpose)
+import Data.List as L
 import Data.List.Split (chunksOf)
 import qualified Data.Map as M hiding (mapMaybe)
 import qualified Data.Maybe as M (mapMaybe)
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
 import Data.Word (Word8)
+import Debug.Trace (trace)
 import Lib.Util
 import Text.Printf (vFmt)
 import Prelude hiding ((++))
@@ -125,7 +126,7 @@ data SingleCharXorSolution = SingleCharXorSolution
   }
 
 singleCharXorSolver :: BitVec -> SingleCharXorSolution
-singleCharXorSolver v = Data.List.maximumBy (compare `on` _score) scored
+singleCharXorSolver v = L.maximumBy (compare `on` _score) scored
   where
     candidates = byteEncode <$> allSingleCharXors v
     toSolution (d, s, c) = SingleCharXorSolution {_decoded = d, _score = s, _char = c}

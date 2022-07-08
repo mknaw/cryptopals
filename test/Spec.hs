@@ -1,4 +1,5 @@
 import Data.Bit
+import Data.ByteString as B
 import qualified Data.ByteString.Char8 as C8
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
@@ -78,6 +79,14 @@ test_manualCBC = do
   let decrypted = decryptCBCManual iv key cipher
   assertEqual "manualCBC" plain decrypted
 
+test_commonPrefix :: Assertion
+test_commonPrefix = do
+  let a = C8.pack "foobarbaz"
+  let b = C8.pack "foobarquux"
+  let c = C8.pack "barbazquux"
+  assertEqual "commonPrefix" (C8.pack "foobar") (commonPrefix a b)
+  assertEqual "commonPrefix" B.empty (commonPrefix a c)
+
 
 main :: IO ()
 main = do
@@ -91,7 +100,8 @@ main = do
             TestCase test_base64Decode,
             TestCase test_hammingDistance,
             TestCase test_transposeBytes,
-            TestCase test_manualCBC
+            TestCase test_manualCBC,
+            TestCase test_commonPrefix
           ]
   runTestTT tests
   return ()

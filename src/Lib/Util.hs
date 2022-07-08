@@ -3,6 +3,7 @@ module Lib.Util
     byteStringXor,
     chunkBy,
     coinFlip,
+    commonPrefix,
     countDupeChunksOf,
     intToBitVec,
     pad,
@@ -12,6 +13,7 @@ module Lib.Util
     profileFor,
     randomByteString,
     reverseMap,
+    seededRandomByteString,
   )
 where
 
@@ -27,7 +29,7 @@ import qualified Data.Map as M
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
 import Data.Word (Word8)
-import System.Random (randomIO)
+import System.Random (Random (randomR), mkStdGen, randomIO)
 import Text.ParserCombinators.Parsec
 import Prelude as P
 
@@ -113,3 +115,9 @@ cleanForCookieEncode = P.filter (`P.notElem` ['=', '&'])
 
 profileFor :: ByteString -> ByteString
 profileFor email = B.concat [C8.pack "email=", email, C8.pack "&uid=10&role=user"]
+
+seededRandomByteString :: Int -> Int -> ByteString
+seededRandomByteString length = B.pack . P.take length . L.unfoldr (Just . randomR (0, 255)) . mkStdGen
+
+commonPrefix :: ByteString -> ByteString -> ByteString
+commonPrefix a b = B.pack . fmap fst . P.takeWhile (uncurry (==)) $ B.zip a b

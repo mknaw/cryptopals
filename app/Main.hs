@@ -17,6 +17,7 @@ import Data.Monoid
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
 import Lib.Crypto
+import Lib.Crypto.ECBOracle
 import Lib.Util
 import System.Random (Random (randomR), mkStdGen, randomRIO)
 import Test.HUnit
@@ -132,51 +133,35 @@ challenge11 = do
   (usedCBC, cipher) <- encryptChallenge11 (C8.replicate 48 'A')
   assertEqual "Challenge 11" usedCBC (guessCBC cipher)
 
-seededKey :: Int -> AES
-seededKey = initAES . B.pack . P.take 16 . L.unfoldr (Just . randomR (0, 255)) . mkStdGen
-
-challenge12Encrypt :: ByteString -> ByteString
-challenge12Encrypt plaintext = encryptECB key plaintext'
+challenge12Oracle :: ByteString -> ByteString
+challenge12Oracle input = encryptECB key plaintext
   where
-    key = seededKey 300
-    unknown =
+    key = initAES (seededRandomByteString 16 300)
+    target =
       C8.pack . byteEncode . base64Decode $
         "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGll\
         \cyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK"
-    plaintext' = padEOTToMultipleOf 16 $ B.append plaintext unknown
+    plaintext = padEOTToMultipleOf 16 $ B.append input target
 
-challenge12Decrypt :: Int -> Int -> ByteString
-challenge12Decrypt blockSize len = challenge12Decrypt' blockSize len B.empty
-
-challenge12Decrypt' :: Int -> Int -> ByteString -> ByteString
-challenge12Decrypt' blockSize cipherLen matched
-  | cipherLen == B.length matched = matched
-  | otherwise = challenge12Decrypt' blockSize cipherLen (B.concat [matched, match])
-  where
-    blockNumber = (cipherLen - B.length matched - 1) `div` blockSize
-    getBlock = B.take blockSize . B.drop (blockNumber * blockSize)
-    input = C8.replicate (cipherLen - B.length matched - 1) 'A'
-    res = getBlock . challenge12Encrypt $ input
-    match = P.head $ do
-      c <- B.pack . L.singleton <$> [0 .. 255]
-      let candidate = getBlock . challenge12Encrypt $ B.concat [input, matched, c]
-      if candidate == res
-        then return c
-        else mempty
+challenge12Decrypted :: String
+challenge12Decrypted =
+  "Rollin' in my 5.0\n\
+  \With my rag-top down so my hair can blow\n\
+  \The girlies on standby waving just to say hi\n\
+  \Did you stop? No, I just drove by\n"
 
 challenge12 :: Assertion
 challenge12 = do
-  let ciphers = [challenge12Encrypt $ C8.replicate k 'A' | k <- [0 ..]]
-  let lengths = B.length <$> ciphers
-  let blockSize = P.head . P.dropWhile (== 0) $ P.zipWith (-) (P.tail lengths) lengths
+  let ciphers = [challenge12Oracle $ C8.replicate k 'A' | k <- [0 ..]]
+  let blockSize = detectBlockSize challenge12Oracle
   assertEqual "Challenge 12 - blockSize discovery" 16 blockSize
   assertEqual "Challenge 12 - detect ECB" True (guessECB $ ciphers !! (2 * blockSize))
-  let cipherLen = P.head lengths
-  let decrypted = C8.unpack . B.filter (/= 0) $ challenge12Decrypt blockSize cipherLen
-  assertEqual "Challenge 12" "Rollin' in my 5." decrypted
+  let cipherLen = detectCipherLen challenge12Oracle
+  let decrypted = C8.unpack . B.takeWhile (`P.notElem` [0, 4]) $ byteAtATimeDecrypt challenge12Oracle
+  assertEqual "Challenge 12" challenge12Decrypted decrypted
 
 challenge13Key :: AES
-challenge13Key = seededKey 666
+challenge13Key = initAES (seededRandomByteString 16 666)
 
 challenge13Encrypt :: ByteString -> ByteString
 challenge13Encrypt plaintext = encryptECB challenge13Key plaintext'
@@ -195,6 +180,7 @@ challenge13 = do
   let parsed = fromRight M.empty (parseCookie input)
   let expected = M.fromList [("foo", "bar"), ("baz", "qux"), ("zap", "zazzle")]
   assertEqual "Challenge 13 - parse cookies" expected parsed
+
   let encoded = profileFor . C8.pack $ "foo@bar.com"
   assertEqual "Challenge 13 - encode profile" (C8.pack "email=foo@bar.com&uid=10&role=user") encoded
 
@@ -209,6 +195,23 @@ challenge13 = do
             B.take 16 (B.drop 16 cipher) -- admin
           ]
   assertEqual "Challenge 13" (Just "admin") (M.lookup "role" (challenge13Decrypt fakeCipher))
+
+challenge14Oracle :: ByteString -> ByteString
+challenge14Oracle input = encryptECB key plaintext
+  where
+    key = initAES $ seededRandomByteString 16 404
+    len = fst . randomR (10, 255) $ mkStdGen 300
+    prefix = seededRandomByteString len 200
+    target =
+      C8.pack . byteEncode . base64Decode $
+        "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGll\
+        \cyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK"
+    plaintext = padEOTToMultipleOf 16 $ B.concat [prefix, input, target]
+
+challenge14 :: Assertion
+challenge14 = do
+  let decrypted = C8.unpack . B.takeWhile (`P.notElem` [0, 4]) $ byteAtATimeDecrypt challenge14Oracle
+  assertEqual "Challenge 14" challenge12Decrypted decrypted
 
 main :: IO ()
 main = do
@@ -226,7 +229,8 @@ main = do
             TestCase challenge10,
             TestCase challenge11,
             TestCase challenge12,
-            TestCase challenge13
+            TestCase challenge13,
+            TestCase challenge14
           ]
   runTestTT tests
   return ()
