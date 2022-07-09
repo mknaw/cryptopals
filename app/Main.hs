@@ -13,6 +13,7 @@ import Data.Function
 import qualified Data.List as L
 import Data.List.Split (chunksOf)
 import Data.Map as M
+import Data.Maybe (isNothing)
 import Data.Monoid
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
@@ -213,6 +214,15 @@ challenge14 = do
   let decrypted = C8.unpack . B.takeWhile (`P.notElem` [0, 4]) $ byteAtATimeDecrypt challenge14Oracle
   assertEqual "Challenge 14" challenge12Decrypted decrypted
 
+challenge15 :: Assertion
+challenge15 = do
+  let input = C8.pack "ICE ICE BABY\x04\x04\x04\x04"
+  assertEqual "Challenge 15" (Just $ C8.pack "ICE ICE BABY") (stripPKCS7 input)
+  let input = C8.pack "ICE ICE BABY\x05\x05\x05\x05"
+  assertBool "Challenge 15" (isNothing $ stripPKCS7 input)
+  let input = C8.pack "ICE ICE BABY\x01\x02\x03\x04"
+  assertBool "Challenge 15" (isNothing $ stripPKCS7 input)
+
 main :: IO ()
 main = do
   let tests =
@@ -230,7 +240,8 @@ main = do
             TestCase challenge11,
             TestCase challenge12,
             TestCase challenge13,
-            TestCase challenge14
+            TestCase challenge14,
+            TestCase challenge15
           ]
   runTestTT tests
   return ()

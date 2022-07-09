@@ -14,6 +14,7 @@ module Lib.Util
     randomByteString,
     reverseMap,
     seededRandomByteString,
+    stripPKCS7,
   )
 where
 
@@ -121,3 +122,12 @@ seededRandomByteString length = B.pack . P.take length . L.unfoldr (Just . rando
 
 commonPrefix :: ByteString -> ByteString -> ByteString
 commonPrefix a b = B.pack . fmap fst . P.takeWhile (uncurry (==)) $ B.zip a b
+
+stripPKCS7 :: ByteString -> Maybe ByteString
+stripPKCS7 b
+  | B.length padding /= fromIntegral c = Nothing
+  | otherwise = Just $ B.reverse b''
+  where
+    b' = B.reverse b
+    c = B.head b'
+    (padding, b'') = B.span (== c) b'
