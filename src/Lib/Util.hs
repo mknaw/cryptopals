@@ -9,8 +9,9 @@ module Lib.Util
     pad,
     padEOT,
     padEOTToMultipleOf,
-    parseCookie,
+    parseKeyValue,
     profileFor,
+    pseudoUrlEncode,
     randomByteString,
     reverseMap,
     seededRandomByteString,
@@ -99,23 +100,30 @@ coinFlip :: IO Bool
 coinFlip = do
   randomIO :: IO Bool
 
-parseCookie :: String -> Either ParseError (M.Map String String)
-parseCookie = parse cookieMap "(unknown)"
+parseKeyValue :: Char -> String -> Either ParseError (M.Map String String)
+parseKeyValue delim = parse keyValue "(unknown)"
   where
-    cookieMap :: GenParser Char st (M.Map String String)
-    cookieMap = do
-      let cookiePair = do
-            let token = many1 (noneOf "&=")
+    keyValue :: GenParser Char st (M.Map String String)
+    keyValue = do
+      let pair = do
+            let token = many1 (noneOf (delim : "="))
             k <- token
             v <- char '=' >> token
             return (k, v)
-      M.fromList <$> sepBy cookiePair (char '&')
+      M.fromList <$> sepBy pair (char delim)
 
-cleanForCookieEncode :: String -> String
-cleanForCookieEncode = P.filter (`P.notElem` ['=', '&'])
+pseudoUrlEncode :: ByteString -> ByteString
+pseudoUrlEncode = B.foldl' go B.empty
+  where
+    go b c = B.append b (safe c)
+    safe c
+      | c == 61 = C8.pack "%3D" -- =
+      | c == 59 = C8.pack "%3B" -- ;
+      | c == 38 = C8.pack "%26" -- &
+      | otherwise = B.pack [c]
 
 profileFor :: ByteString -> ByteString
-profileFor email = B.concat [C8.pack "email=", email, C8.pack "&uid=10&role=user"]
+profileFor email = B.concat [C8.pack "email=", pseudoUrlEncode email, C8.pack "&uid=10&role=user"]
 
 seededRandomByteString :: Int -> Int -> ByteString
 seededRandomByteString length = B.pack . P.take length . L.unfoldr (Just . randomR (0, 255)) . mkStdGen

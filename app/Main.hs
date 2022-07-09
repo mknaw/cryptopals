@@ -104,14 +104,14 @@ challenge10 :: Assertion
 challenge10 = do
   cipher <- C8.pack . byteEncode . base64Decode . P.concat . lines <$> readFile "static/10.txt"
   let iv = B.replicate 16 0
-  let key = C8.pack "YELLOW SUBMARINE"
+  let key = initAES $ C8.pack "YELLOW SUBMARINE"
   let decrypted = decryptCBCManual iv key cipher
   assertEqual "Challenge 10" "I'm back and I'm ringin' the bell " (C8.unpack . P.head . C8.lines $ decrypted)
 
 encryptChallenge11 :: ByteString -> IO (Bool, ByteString)
 encryptChallenge11 plaintext = do
   iv <- randomByteString 16
-  key <- randomByteString 16
+  key <- initAES <$> randomByteString 16
   paddingLength <- randomRIO (5, 10)
   padding <- randomByteString paddingLength
   let plaintext' = padEOTToMultipleOf 16 $ B.concat [padding, plaintext, padding]
@@ -119,7 +119,7 @@ encryptChallenge11 plaintext = do
   let cipher =
         if useCBC
           then encryptCBCManual iv key plaintext'
-          else encryptECB (initAES key) plaintext'
+          else encryptECB key plaintext'
 
   return (useCBC, cipher)
 
@@ -170,7 +170,7 @@ challenge13Encrypt plaintext = encryptECB challenge13Key plaintext'
     plaintext' = padEOTToMultipleOf 16 (profileFor plaintext)
 
 challenge13Decrypt :: ByteString -> M.Map String String
-challenge13Decrypt cipher = fromRight M.empty (parseCookie $ C8.unpack decrypted')
+challenge13Decrypt cipher = fromRight M.empty (parseKeyValue '&' $ C8.unpack decrypted')
   where
     decrypted = decryptECB challenge13Key cipher
     decrypted' = B.reverse . B.dropWhile (== 0) . B.reverse $ decrypted
@@ -178,7 +178,7 @@ challenge13Decrypt cipher = fromRight M.empty (parseCookie $ C8.unpack decrypted
 challenge13 :: Assertion
 challenge13 = do
   let input = "foo=bar&baz=qux&zap=zazzle"
-  let parsed = fromRight M.empty (parseCookie input)
+  let parsed = fromRight M.empty (parseKeyValue '&' input)
   let expected = M.fromList [("foo", "bar"), ("baz", "qux"), ("zap", "zazzle")]
   assertEqual "Challenge 13 - parse cookies" expected parsed
 
@@ -223,6 +223,42 @@ challenge15 = do
   let input = C8.pack "ICE ICE BABY\x01\x02\x03\x04"
   assertBool "Challenge 15" (isNothing $ stripPKCS7 input)
 
+challenge16Encrypt :: ByteString -> AES -> ByteString -> ByteString
+challenge16Encrypt iv key input = encryptCBCManual iv key plaintext
+  where
+    plaintext =
+      padEOTToMultipleOf 16 . B.concat $
+        [ C8.pack "comment1=cooking%20MCs;userdata=",
+          input,
+          C8.pack ";comment2=%20like%20a%20pound%20of%20bacon"
+        ]
+
+challenge16IsAdmin :: ByteString -> AES -> ByteString -> Bool
+challenge16IsAdmin iv key cipher =
+  case M.lookup "admin" m of
+    Just "true" -> True
+    _ -> False
+  where
+    m = fromRight M.empty . parseKeyValue ';' . C8.unpack $ decryptCBCManual iv key cipher
+
+challenge16 :: Assertion
+challenge16 = do
+  iv <- randomByteString 16
+  key <- initAES <$> randomByteString 16
+  let cipher = challenge16Encrypt iv key (C8.pack "mknawxadminxtrue")
+  let blockSize = 16
+  let adminLen = P.length "admin"
+  let mask =
+        B.concat
+          [ B.replicate (blockSize + adminLen) 0,
+            B.pack [67],
+            B.replicate adminLen 0,
+            B.pack [69],
+            B.replicate (B.length cipher - 28) 0
+          ]
+  let cipher' = byteStringXor cipher mask
+  assertBool "Challenge 16" $ challenge16IsAdmin iv key cipher'
+
 main :: IO ()
 main = do
   let tests =
@@ -241,7 +277,8 @@ main = do
             TestCase challenge12,
             TestCase challenge13,
             TestCase challenge14,
-            TestCase challenge15
+            TestCase challenge15,
+            TestCase challenge16
           ]
   runTestTT tests
   return ()
