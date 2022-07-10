@@ -2,17 +2,19 @@ module Lib.Util
   ( BitVec (..),
     byteStringXor,
     chunkBy,
+    chunksOfBS,
     coinFlip,
     commonPrefix,
     countDupeChunksOf,
     intToBitVec,
     pad,
-    padEOT,
-    padEOTToMultipleOf,
+    padPKCS7,
+    padPKCS7',
     parseKeyValue,
     profileFor,
     pseudoUrlEncode,
     randomByteString,
+    randomSample,
     reverseMap,
     seededRandomByteString,
     stripPKCS7,
@@ -31,9 +33,10 @@ import qualified Data.Map as M
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
 import Data.Word (Word8)
-import System.Random (Random (randomR), mkStdGen, randomIO)
+import System.Random (Random (randomR), mkStdGen, randomIO, randomRIO)
 import Text.ParserCombinators.Parsec
 import Prelude as P
+import System.Random.Stateful (UniformRange(uniformRM), globalStdGen)
 
 type BitVec = UV.Vector Bit
 
@@ -52,19 +55,16 @@ pad k v
   where
     diff = k - UV.length v
 
-padEOT :: Int -> ByteString -> ByteString
-padEOT k b
-  | B.length b < k = B.append b (B.replicate diff 4)
-  | otherwise = undefined
+padPKCS7' :: Int -> ByteString -> ByteString
+padPKCS7' blockSize b = B.append b (B.replicate r $ fromIntegral r)
   where
-    diff = k - B.length b
+    r = blockSize - (B.length b `mod` blockSize)
 
-padEOTToMultipleOf :: Int -> ByteString -> ByteString
-padEOTToMultipleOf k b
-  | B.length b `rem` k == 0 = b
-  | otherwise = padEOT newLength b
-  where
-    newLength = ((B.length b `div` k) + 1) * k
+padPKCS7 :: ByteString -> ByteString
+padPKCS7 = padPKCS7' 16
+
+chunksOfBS :: Int -> ByteString -> [ByteString]
+chunksOfBS k = fmap B.pack . chunksOf k . B.unpack
 
 -- TODO would be nice if we didn't have to do the Unbox / Box stuff
 -- but dunno how to provide an output type
@@ -99,6 +99,11 @@ randomByteString k = do
 coinFlip :: IO Bool
 coinFlip = do
   randomIO :: IO Bool
+
+randomSample :: [a] -> IO a
+randomSample xs = do
+    i <- uniformRM (0, P.length xs - 1) globalStdGen
+    return $ xs !! i
 
 parseKeyValue :: Char -> String -> Either ParseError (M.Map String String)
 parseKeyValue delim = parse keyValue "(unknown)"

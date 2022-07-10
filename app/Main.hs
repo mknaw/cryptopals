@@ -13,10 +13,11 @@ import Data.Function
 import qualified Data.List as L
 import Data.List.Split (chunksOf)
 import Data.Map as M
-import Data.Maybe (isNothing)
+import Data.Maybe (isJust, isNothing)
 import Data.Monoid
 import Data.Vector as V
 import Data.Vector.Unboxed as UV
+import Debug.Trace (trace)
 import Lib.Crypto
 import Lib.Crypto.ECBOracle
 import Lib.Util
@@ -97,7 +98,7 @@ challenge8 = do
 
 challenge9 :: Assertion
 challenge9 = do
-  let padded = padEOT 20 (C8.pack "YELLOW SUBMARINE")
+  let padded = padPKCS7' 20 (C8.pack "YELLOW SUBMARINE")
   assertEqual "Challenge 9" (C8.pack "YELLOW SUBMARINE\EOT\EOT\EOT\EOT") padded
 
 challenge10 :: Assertion
@@ -114,7 +115,7 @@ encryptChallenge11 plaintext = do
   key <- initAES <$> randomByteString 16
   paddingLength <- randomRIO (5, 10)
   padding <- randomByteString paddingLength
-  let plaintext' = padEOTToMultipleOf 16 $ B.concat [padding, plaintext, padding]
+  let plaintext' = padPKCS7 $ B.concat [padding, plaintext, padding]
   useCBC <- coinFlip
   let cipher =
         if useCBC
@@ -142,14 +143,15 @@ challenge12Oracle input = encryptECB key plaintext
       C8.pack . byteEncode . base64Decode $
         "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGll\
         \cyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK"
-    plaintext = padEOTToMultipleOf 16 $ B.append input target
+    plaintext = padPKCS7 $ B.append input target
 
-challenge12Decrypted :: String
+challenge12Decrypted :: ByteString
 challenge12Decrypted =
-  "Rollin' in my 5.0\n\
-  \With my rag-top down so my hair can blow\n\
-  \The girlies on standby waving just to say hi\n\
-  \Did you stop? No, I just drove by\n"
+  C8.pack
+    "Rollin' in my 5.0\n\
+    \With my rag-top down so my hair can blow\n\
+    \The girlies on standby waving just to say hi\n\
+    \Did you stop? No, I just drove by\n"
 
 challenge12 :: Assertion
 challenge12 = do
@@ -158,8 +160,8 @@ challenge12 = do
   assertEqual "Challenge 12 - blockSize discovery" 16 blockSize
   assertEqual "Challenge 12 - detect ECB" True (guessECB $ ciphers !! (2 * blockSize))
   let cipherLen = detectCipherLen challenge12Oracle
-  let decrypted = C8.unpack . B.takeWhile (`P.notElem` [0, 4]) $ byteAtATimeDecrypt challenge12Oracle
-  assertEqual "Challenge 12" challenge12Decrypted decrypted
+  let decrypted = stripPKCS7 $ byteAtATimeDecrypt challenge12Oracle
+  assertEqual "Challenge 12" (Just challenge12Decrypted) decrypted
 
 challenge13Key :: AES
 challenge13Key = initAES (seededRandomByteString 16 666)
@@ -167,7 +169,7 @@ challenge13Key = initAES (seededRandomByteString 16 666)
 challenge13Encrypt :: ByteString -> ByteString
 challenge13Encrypt plaintext = encryptECB challenge13Key plaintext'
   where
-    plaintext' = padEOTToMultipleOf 16 (profileFor plaintext)
+    plaintext' = padPKCS7 (profileFor plaintext)
 
 challenge13Decrypt :: ByteString -> M.Map String String
 challenge13Decrypt cipher = fromRight M.empty (parseKeyValue '&' $ C8.unpack decrypted')
@@ -207,12 +209,12 @@ challenge14Oracle input = encryptECB key plaintext
       C8.pack . byteEncode . base64Decode $
         "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGll\
         \cyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK"
-    plaintext = padEOTToMultipleOf 16 $ B.concat [prefix, input, target]
+    plaintext = padPKCS7 $ B.concat [prefix, input, target]
 
 challenge14 :: Assertion
 challenge14 = do
-  let decrypted = C8.unpack . B.takeWhile (`P.notElem` [0, 4]) $ byteAtATimeDecrypt challenge14Oracle
-  assertEqual "Challenge 14" challenge12Decrypted decrypted
+  let decrypted = stripPKCS7 $ byteAtATimeDecrypt challenge14Oracle
+  assertEqual "Challenge 14" (Just challenge12Decrypted) decrypted
 
 challenge15 :: Assertion
 challenge15 = do
@@ -227,7 +229,7 @@ challenge16Encrypt :: ByteString -> AES -> ByteString -> ByteString
 challenge16Encrypt iv key input = encryptCBCManual iv key plaintext
   where
     plaintext =
-      padEOTToMultipleOf 16 . B.concat $
+      padPKCS7 . B.concat $
         [ C8.pack "comment1=cooking%20MCs;userdata=",
           input,
           C8.pack ";comment2=%20like%20a%20pound%20of%20bacon"
@@ -259,26 +261,103 @@ challenge16 = do
   let cipher' = byteStringXor cipher mask
   assertBool "Challenge 16" $ challenge16IsAdmin iv key cipher'
 
+challenge17Encrypt :: IO (ByteString, AES, ByteString)
+challenge17Encrypt = do
+  iv <- randomByteString 16
+  key <- initAES <$> randomByteString 16
+  cipher <-
+    encryptCBCManual iv key . padPKCS7 . C8.pack
+      <$> randomSample
+        [ "MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc=",
+          "MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic=",
+          "MDAwMDAyUXVpY2sgdG8gdGhlIHBvaW50LCB0byB0aGUgcG9pbnQsIG5vIGZha2luZw==",
+          "MDAwMDAzQ29va2luZyBNQydzIGxpa2UgYSBwb3VuZCBvZiBiYWNvbg==",
+          "MDAwMDA0QnVybmluZyAnZW0sIGlmIHlvdSBhaW4ndCBxdWljayBhbmQgbmltYmxl",
+          "MDAwMDA1SSBnbyBjcmF6eSB3aGVuIEkgaGVhciBhIGN5bWJhbA==",
+          "MDAwMDA2QW5kIGEgaGlnaCBoYXQgd2l0aCBhIHNvdXBlZCB1cCB0ZW1wbw==",
+          "MDAwMDA3SSdtIG9uIGEgcm9sbCwgaXQncyB0aW1lIHRvIGdvIHNvbG8=",
+          "MDAwMDA4b2xsaW4nIGluIG15IGZpdmUgcG9pbnQgb2g=",
+          "MDAwMDA5aXRoIG15IHJhZy10b3AgZG93biBzbyBteSBoYWlyIGNhbiBibG93"
+        ]
+  return (iv, key, cipher)
+
+type PaddingOracle = ByteString -> Bool
+
+challenge17Oracle :: ByteString -> AES -> PaddingOracle
+-- TODO think there's a better pattern for this ...
+challenge17Oracle iv k b = isJust . stripPKCS7 $ x
+  where
+    x = decryptCBCManual iv k b
+
+-- TODO move to Utils if kept
+shift' :: [a] -> [a]
+shift' (x : xs) = xs P.++ [x]
+shift' [] = []
+
+shift :: [a] -> [a]
+shift = P.reverse . shift' . P.reverse
+
+shiftBy :: Int -> [a] -> [a]
+shiftBy k = (!! k) . P.iterate shift
+
+byteFlips :: Int -> ByteString -> [ByteString]
+byteFlips k b = byteStringXor b . B.pack <$> xs
+  where
+    len = B.length b
+    xs = [shiftBy k (i : P.replicate (len - 1) 0) | i <- [0 .. 255]]
+
+decryptByte :: Int -> ByteString -> ByteString -> PaddingOracle -> ByteString
+decryptByte k x c o = P.head $ do
+  let pad = if k > 0 then padPKCS7 $ B.replicate k 0 else B.replicate 16 16
+  -- TODO still have to solve for cases like ... 04 ?? 04 04 04
+  -- trace (show (P.length . L.nub $ byteFlips k (byteStringXor i pad))) ""
+  let xs = byteFlips k (byteStringXor x pad)
+  let xs' = if k > 0 then P.head . P.tail . byteFlips (k - 1) <$> xs else []
+  x' <- xs <> xs'
+  let c' = B.append x' c
+  let followUp = P.head $ byteFlips (k - 1) c'
+  let condition =
+        if k == 15
+          then -- For the first one, have to confirm that we do not have valid non-01 ending.
+            o c' && o followUp
+          else o c'
+  if condition
+    then return (byteStringXor pad x')
+    else mempty
+
+decryptBlock :: PaddingOracle -> ByteString -> ByteString
+decryptBlock o b = P.foldl go (B.replicate 16 0) (P.reverse [0 .. 15])
+  where
+    go i k = decryptByte k i b o
+
+challenge17 :: Assertion
+challenge17 = do
+  (iv, key, cipher) <- challenge17Encrypt
+  let oracle = challenge17Oracle iv key
+  let decrypted = byteStringXor cipher . B.concat $ decryptBlock oracle <$> (P.tail . chunksOfBS 16 $ cipher)
+  assertEqual "Challenge 17" (B.drop 16 $ decryptCBCManual iv key cipher) decrypted
+
 main :: IO ()
 main = do
   let tests =
         TestList
           [ TestCase challenge1,
-            TestCase challenge2,
-            TestCase challenge3,
-            TestCase challenge4,
-            TestCase challenge5,
-            TestCase challenge6,
-            TestCase challenge7,
-            TestCase challenge8,
-            TestCase challenge9,
-            TestCase challenge10,
-            TestCase challenge11,
-            TestCase challenge12,
-            TestCase challenge13,
-            TestCase challenge14,
-            TestCase challenge15,
-            TestCase challenge16
+            -- TestCase challenge2,
+            -- TestCase challenge3,
+            -- TestCase challenge4,
+            -- TestCase challenge5,
+            -- TestCase challenge6,
+            -- TestCase challenge7,
+            -- TestCase challenge8,
+            -- TestCase challenge9,
+            -- TestCase challenge10,
+            -- TestCase challenge11,
+            -- TestCase challenge12,
+            -- TestCase challenge13,
+            -- TestCase challenge14,
+            -- TestCase challenge15,
+            -- TestCase challenge16,
+            TestCase challenge17
           ]
   runTestTT tests
   return ()
