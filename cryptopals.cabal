@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 78c86e8d79fd9202d2712723ce048e2b1314c3a5674ecf942f1677ee5e859b5d
+-- hash: b35dc226e18b5ed5fae5f2ef403232dd3823eb8391bcf86e8e045c599414a709
 
 name:           cryptopals
 version:        0.1.0.0
@@ -28,7 +28,10 @@ library
   exposed-modules:
       Lib.Crypto
       Lib.Crypto.ECBOracle
+      Lib.Encode.Base64
+      Lib.Encode.Hex
       Lib.Util
+      Lib.Util.Random
   other-modules:
       Paths_cryptopals
   hs-source-dirs:
@@ -36,14 +39,12 @@ library
   build-depends:
       HUnit
     , base >=4.7 && <5
-    , bitvec
     , bytestring
     , cipher-aes
     , containers
     , parsec
     , random
     , split
-    , vector
   default-language: Haskell2010
 
 executable cryptopals-exe
@@ -52,11 +53,10 @@ executable cryptopals-exe
       Paths_cryptopals
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall -haddock
   build-depends:
       HUnit
     , base >=4.7 && <5
-    , bitvec
     , bytestring
     , cipher-aes
     , containers
@@ -64,7 +64,6 @@ executable cryptopals-exe
     , parsec
     , random
     , split
-    , vector
   default-language: Haskell2010
 
 test-suite cryptopals-test
@@ -74,11 +73,10 @@ test-suite cryptopals-test
       Paths_cryptopals
   hs-source-dirs:
       test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
   build-depends:
       HUnit
     , base >=4.7 && <5
-    , bitvec
     , bytestring
     , cipher-aes
     , containers
@@ -86,5 +84,4 @@ test-suite cryptopals-test
     , parsec
     , random
     , split
-    , vector
   default-language: Haskell2010

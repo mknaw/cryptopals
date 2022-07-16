@@ -1,26 +1,23 @@
-module Main where
+{-# LANGUAGE OverloadedStrings #-}
+
+module Main (main) where
 
 import Control.Monad
 import Crypto.Cipher.AES (AES, decryptECB, encryptECB, initAES)
-import Data.Bit (castFromWords8, zipBits)
-import Data.Bits (shiftL, xor)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C8
-import Data.Char (chr)
 import Data.Either
 import Data.Function
 import qualified Data.List as L
-import Data.List.Split (chunksOf)
 import Data.Map as M
 import Data.Maybe (isJust, isNothing)
-import Data.Monoid
-import Data.Vector as V
-import Data.Vector.Unboxed as UV
-import Debug.Trace (trace)
 import Lib.Crypto
 import Lib.Crypto.ECBOracle
+import qualified Lib.Encode.Base64 as B64
+import qualified Lib.Encode.Hex as HEX
 import Lib.Util
+import Lib.Util.Random
 import System.Random (Random (randomR), mkStdGen, randomRIO)
 import Test.HUnit
 import Prelude hiding ((++))
@@ -31,28 +28,27 @@ challenge1 = do
   let input =
         "49276d206b696c6c696e6720796f757220627261696e206c\
         \696b65206120706f69736f6e6f7573206d757368726f6f6d"
-  let encoded = base64Encode . hexDecode $ input
+  let encoded = B64.encode . HEX.decode $ input
   let output = "SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t"
   assertEqual "Challenge 1" output encoded
 
 challenge2 :: Assertion
 challenge2 = do
-  let a = hexDecode "1c0111001f010100061a024b53535009181c"
-  let b = hexDecode "686974207468652062756c6c277320657965"
-  let xord = hexEncode $ zipBits xor a b
-  let output = "746865206b696420646f6e277420706c6179"
-  assertEqual "Challenge 2" output xord
+  let a = HEX.decode "1c0111001f010100061a024b53535009181c"
+  let b = HEX.decode "686974207468652062756c6c277320657965"
+  let xord = byteStringXor a b
+  assertEqual "Challenge 2" "the kid don't play" xord
 
 challenge3 :: Assertion
 challenge3 = do
   let input = "1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736"
   let expected = "Cooking MC's like a pound of bacon"
-  assertEqual "Challenge 3" expected (_decoded . singleCharXorSolver . hexDecode $ input)
+  assertEqual "Challenge 3" expected (_decoded . singleCharXorSolver . HEX.decode $ input)
 
 challenge4 :: Assertion
 challenge4 = do
   -- TODO could probably make it faster
-  hexes <- P.map hexDecode . lines <$> readFile "static/4.txt"
+  hexes <- P.map (HEX.decode . C8.pack) . lines <$> readFile "static/4.txt"
   let winner = _decoded $ L.maximumBy (compare `on` _score) (singleCharXorSolver <$> hexes)
   assertEqual "Challenge 4" "Now that the party is jumping\n" winner
 
@@ -63,18 +59,18 @@ challenge5 = do
   let expected =
         "0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a2622632427276527\
         \2a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f"
-  assertEqual "Challenge 5" expected (hexEncode $ repeatingKeyXor key input)
+  assertEqual "Challenge 5" expected (HEX.encode $ repeatingKeyXor key input)
 
 challenge6 :: Assertion
 challenge6 = do
-  vec <- base64Decode . P.concat . P.lines <$> readFile "static/6.txt"
-  let keySizes = P.take 3 $ L.sortBy (compare `on` flip sampleBytesDistance vec) [2 .. 40]
+  b <- B64.decode . C8.pack . P.concat . P.lines <$> readFile "static/6.txt"
+  let keySizes = P.take 3 $ L.sortBy (compare `on` sampleBytesDistance b) [2 .. 40]
   let candidates = do
         keySize <- keySizes
-        let t = transposeBytes keySize vec
-        let solved = V.map singleCharXorSolver t
-        let score = V.sum $ V.map _score solved
-        let chars = V.toList $ V.map _char solved
+        let t = transposeBytes keySize b
+        let solved = singleCharXorSolver <$> t
+        let score = P.sum $ _score <$> solved
+        let chars = _char <$> solved
         return (score, chars)
   let (_, key) = L.maximumBy (compare `on` fst) candidates
 
@@ -82,15 +78,15 @@ challenge6 = do
 
 challenge7 :: Assertion
 challenge7 = do
-  ciphertext <- C8.pack . byteEncode . base64Decode . P.concat . P.lines <$> readFile "static/7.txt"
+  ciphertext <- B64.decode . C8.pack . P.concat . P.lines <$> readFile "static/7.txt"
   let key = initAES . C8.pack $ "YELLOW SUBMARINE"
   let decrypted = decryptECB key ciphertext
-  assertEqual "Challenge 7" "I'm back and I'm ringin' the bell " (C8.unpack . P.head . C8.lines $ decrypted)
+  assertEqual "Challenge 7" "I'm back and I'm ringin' the bell " (P.head . C8.lines $ decrypted)
 
 challenge8 :: Assertion
 challenge8 = do
   inputs <- P.lines <$> readFile "static/8.txt"
-  let chunkedCipher = C8.pack . byteEncode . hexDecode <$> inputs
+  let chunkedCipher = HEX.decode . C8.pack <$> inputs
   let repeats = countDupeChunksOf 16 <$> chunkedCipher
   let (winnerRepeats, winner) = L.maximumBy (compare `on` fst) (P.zip repeats inputs)
   assertBool "Challenge 8" (winnerRepeats > 0)
@@ -98,12 +94,12 @@ challenge8 = do
 
 challenge9 :: Assertion
 challenge9 = do
-  let padded = padPKCS7' 20 (C8.pack "YELLOW SUBMARINE")
-  assertEqual "Challenge 9" (C8.pack "YELLOW SUBMARINE\EOT\EOT\EOT\EOT") padded
+  let padded = padPKCS7' 20 "YELLOW SUBMARINE"
+  assertEqual "Challenge 9" "YELLOW SUBMARINE\EOT\EOT\EOT\EOT" padded
 
 challenge10 :: Assertion
 challenge10 = do
-  cipher <- C8.pack . byteEncode . base64Decode . P.concat . lines <$> readFile "static/10.txt"
+  cipher <- B64.decode . C8.pack . P.concat . lines <$> readFile "static/10.txt"
   let iv = B.replicate 16 0
   let key = initAES $ C8.pack "YELLOW SUBMARINE"
   let decrypted = decryptCBCManual iv key cipher
@@ -140,18 +136,17 @@ challenge12Oracle input = encryptECB key plaintext
   where
     key = initAES (seededRandomByteString 16 300)
     target =
-      C8.pack . byteEncode . base64Decode $
+      B64.decode
         "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGll\
         \cyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK"
     plaintext = padPKCS7 $ B.append input target
 
 challenge12Decrypted :: ByteString
 challenge12Decrypted =
-  C8.pack
-    "Rollin' in my 5.0\n\
-    \With my rag-top down so my hair can blow\n\
-    \The girlies on standby waving just to say hi\n\
-    \Did you stop? No, I just drove by\n"
+  "Rollin' in my 5.0\n\
+  \With my rag-top down so my hair can blow\n\
+  \The girlies on standby waving just to say hi\n\
+  \Did you stop? No, I just drove by\n"
 
 challenge12 :: Assertion
 challenge12 = do
@@ -159,7 +154,6 @@ challenge12 = do
   let blockSize = detectBlockSize challenge12Oracle
   assertEqual "Challenge 12 - blockSize discovery" 16 blockSize
   assertEqual "Challenge 12 - detect ECB" True (guessECB $ ciphers !! (2 * blockSize))
-  let cipherLen = detectCipherLen challenge12Oracle
   let decrypted = stripPKCS7 $ byteAtATimeDecrypt challenge12Oracle
   assertEqual "Challenge 12" (Just challenge12Decrypted) decrypted
 
@@ -184,13 +178,13 @@ challenge13 = do
   let expected = M.fromList [("foo", "bar"), ("baz", "qux"), ("zap", "zazzle")]
   assertEqual "Challenge 13 - parse cookies" expected parsed
 
-  let encoded = profileFor . C8.pack $ "foo@bar.com"
-  assertEqual "Challenge 13 - encode profile" (C8.pack "email=foo@bar.com&uid=10&role=user") encoded
+  let encoded = profileFor "foo@bar.com"
+  assertEqual "Challenge 13 - encode profile" "email=foo@bar.com&uid=10&role=user" encoded
 
   -- email=hello@sup. admin            com&uid=10&role= user
   -- ................ ................ ................ ................
-  let input = B.concat [C8.pack "hello@sup.admin", B.replicate (16 - 5) 0, C8.pack "com"]
-  let cipher = challenge13Encrypt input
+  let input' = B.concat ["hello@sup.admin", B.replicate (16 - 5) 0, "com"]
+  let cipher = challenge13Encrypt input'
   let fakeCipher =
         B.concat
           [ B.take 16 cipher, -- email=hello@sup.
@@ -206,7 +200,7 @@ challenge14Oracle input = encryptECB key plaintext
     len = fst . randomR (10, 255) $ mkStdGen 300
     prefix = seededRandomByteString len 200
     target =
-      C8.pack . byteEncode . base64Decode $
+      B64.decode
         "Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGll\
         \cyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK"
     plaintext = padPKCS7 $ B.concat [prefix, input, target]
@@ -218,21 +212,21 @@ challenge14 = do
 
 challenge15 :: Assertion
 challenge15 = do
-  let input = C8.pack "ICE ICE BABY\x04\x04\x04\x04"
-  assertEqual "Challenge 15" (Just $ C8.pack "ICE ICE BABY") (stripPKCS7 input)
-  let input = C8.pack "ICE ICE BABY\x05\x05\x05\x05"
-  assertBool "Challenge 15" (isNothing $ stripPKCS7 input)
-  let input = C8.pack "ICE ICE BABY\x01\x02\x03\x04"
-  assertBool "Challenge 15" (isNothing $ stripPKCS7 input)
+  let input = "ICE ICE BABY\x04\x04\x04\x04"
+  assertEqual "Challenge 15" (Just "ICE ICE BABY") (stripPKCS7 input)
+  let input' = "ICE ICE BABY\x05\x05\x05\x05"
+  assertBool "Challenge 15" (isNothing $ stripPKCS7 input')
+  let input'' = "ICE ICE BABY\x01\x02\x03\x04"
+  assertBool "Challenge 15" (isNothing $ stripPKCS7 input'')
 
 challenge16Encrypt :: ByteString -> AES -> ByteString -> ByteString
 challenge16Encrypt iv key input = encryptCBCManual iv key plaintext
   where
     plaintext =
       padPKCS7 . B.concat $
-        [ C8.pack "comment1=cooking%20MCs;userdata=",
+        [ "comment1=cooking%20MCs;userdata=",
           input,
-          C8.pack ";comment2=%20like%20a%20pound%20of%20bacon"
+          ";comment2=%20like%20a%20pound%20of%20bacon"
         ]
 
 challenge16IsAdmin :: ByteString -> AES -> ByteString -> Bool
@@ -243,13 +237,14 @@ challenge16IsAdmin iv key cipher =
   where
     m = fromRight M.empty . parseKeyValue ';' . C8.unpack $ decryptCBCManual iv key cipher
 
+-- TODO appears to fail occasionally with some (iv, key)s
 challenge16 :: Assertion
 challenge16 = do
   iv <- randomByteString 16
   key <- initAES <$> randomByteString 16
-  let cipher = challenge16Encrypt iv key (C8.pack "mknawxadminxtrue")
+  let cipher = challenge16Encrypt iv key "mknawxadminxtrue"
   let blockSize = 16
-  let adminLen = P.length "admin"
+  let adminLen = B.length "admin"
   let mask =
         B.concat
           [ B.replicate (blockSize + adminLen) 0,
@@ -266,7 +261,7 @@ challenge17Encrypt = do
   iv <- randomByteString 16
   key <- initAES <$> randomByteString 16
   cipher <-
-    encryptCBCManual iv key . padPKCS7 . C8.pack
+    encryptCBCManual iv key . padPKCS7
       <$> randomSample
         [ "MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc=",
           "MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic=",
@@ -284,21 +279,7 @@ challenge17Encrypt = do
 type PaddingOracle = ByteString -> Bool
 
 challenge17Oracle :: ByteString -> AES -> PaddingOracle
--- TODO think there's a better pattern for this ...
-challenge17Oracle iv k b = isJust . stripPKCS7 $ x
-  where
-    x = decryptCBCManual iv k b
-
--- TODO move to Utils if kept
-shift' :: [a] -> [a]
-shift' (x : xs) = xs P.++ [x]
-shift' [] = []
-
-shift :: [a] -> [a]
-shift = P.reverse . shift' . P.reverse
-
-shiftBy :: Int -> [a] -> [a]
-shiftBy k = (!! k) . P.iterate shift
+challenge17Oracle = (((isJust . stripPKCS7) .) .) . decryptCBCManual
 
 byteFlips :: Int -> ByteString -> [ByteString]
 byteFlips k b = byteStringXor b . B.pack <$> xs
@@ -307,23 +288,17 @@ byteFlips k b = byteStringXor b . B.pack <$> xs
     xs = [shiftBy k (i : P.replicate (len - 1) 0) | i <- [0 .. 255]]
 
 decryptByte :: Int -> ByteString -> ByteString -> PaddingOracle -> ByteString
-decryptByte k x c o = P.head $ do
-  let pad = if k > 0 then padPKCS7 $ B.replicate k 0 else B.replicate 16 16
-  -- TODO still have to solve for cases like ... 04 ?? 04 04 04
-  -- trace (show (P.length . L.nub $ byteFlips k (byteStringXor i pad))) ""
-  let xs = byteFlips k (byteStringXor x pad)
-  let xs' = if k > 0 then P.head . P.tail . byteFlips (k - 1) <$> xs else []
-  x' <- xs <> xs'
-  let c' = B.append x' c
-  let followUp = P.head $ byteFlips (k - 1) c'
-  let condition =
-        if k == 15
-          then -- For the first one, have to confirm that we do not have valid non-01 ending.
-            o c' && o followUp
-          else o c'
-  if condition
-    then return (byteStringXor pad x')
-    else mempty
+decryptByte k x c o = byteStringXor pad . P.head . P.filter condition $ cs
+  where
+    pad = if k > 0 then padPKCS7 $ B.replicate k 0 else B.replicate 16 16
+    x' = byteStringXor x pad
+    xs = if k == 0 then [x'] else [x', P.head . P.tail . byteFlips (k - 1) $ x']
+    cs = [B.append a c | a <- P.concatMap (byteFlips k) xs]
+    condition c' =
+      if k == 15
+        then -- For the first one, have to confirm that we do not have valid non-01 ending.
+          o c' && o (P.head $ byteFlips (k - 1) c')
+        else o c'
 
 decryptBlock :: PaddingOracle -> ByteString -> ByteString
 decryptBlock o b = P.foldl go (B.replicate 16 0) (P.reverse [0 .. 15])
@@ -342,22 +317,22 @@ main = do
   let tests =
         TestList
           [ TestCase challenge1,
-            -- TestCase challenge2,
-            -- TestCase challenge3,
-            -- TestCase challenge4,
-            -- TestCase challenge5,
-            -- TestCase challenge6,
-            -- TestCase challenge7,
-            -- TestCase challenge8,
-            -- TestCase challenge9,
-            -- TestCase challenge10,
-            -- TestCase challenge11,
-            -- TestCase challenge12,
-            -- TestCase challenge13,
-            -- TestCase challenge14,
-            -- TestCase challenge15,
-            -- TestCase challenge16,
+            TestCase challenge2,
+            TestCase challenge3,
+            TestCase challenge4,
+            TestCase challenge5,
+            TestCase challenge6,
+            TestCase challenge7,
+            TestCase challenge8,
+            TestCase challenge9,
+            TestCase challenge10,
+            TestCase challenge11,
+            TestCase challenge12,
+            TestCase challenge13,
+            TestCase challenge14,
+            TestCase challenge15,
+            TestCase challenge16,
             TestCase challenge17
           ]
-  runTestTT tests
+  _ <- runTestTT tests
   return ()

@@ -1,59 +1,35 @@
+{-# OPTIONS_GHC -Wall #-}
+
 module Lib.Util
-  ( BitVec (..),
-    byteStringXor,
-    chunkBy,
+  ( byteStringXor,
     chunksOfBS,
-    coinFlip,
     commonPrefix,
     countDupeChunksOf,
-    intToBitVec,
-    pad,
     padPKCS7,
     padPKCS7',
     parseKeyValue,
     profileFor,
     pseudoUrlEncode,
-    randomByteString,
-    randomSample,
     reverseMap,
-    seededRandomByteString,
+    shiftBy,
     stripPKCS7,
   )
 where
 
 import Control.Monad as M
-import Data.Bit (Bit (..), castFromWords8, cloneToWords8)
-import Data.Bits (shiftR, xor)
-import Data.ByteString (ByteString)
+import Data.Bits
 import Data.ByteString as B
 import qualified Data.ByteString.Char8 as C8
 import qualified Data.List as L
 import Data.List.Split (chunksOf)
 import qualified Data.Map as M
-import Data.Vector as V
-import Data.Vector.Unboxed as UV
-import Data.Word (Word8)
-import System.Random (Random (randomR), mkStdGen, randomIO, randomRIO)
 import Text.ParserCombinators.Parsec
 import Prelude as P
-import System.Random.Stateful (UniformRange(uniformRM), globalStdGen)
 
-type BitVec = UV.Vector Bit
-
--- TODO would be good to extract our `BitVec` somewhere.
-intToBitVec :: Int -> BitVec
-intToBitVec k = go UV.empty k
+shiftBy :: Int -> [a] -> [a]
+shiftBy k xs = bs <> as
   where
-    go v k
-      | k <= 0 = v
-      | otherwise = go (UV.cons (Bit (k `mod` 2 == 1)) v) (k `shiftR` 1)
-
-pad :: Int -> BitVec -> BitVec
-pad k v
-  | diff <= 0 = v
-  | otherwise = UV.replicate diff (Bit False) UV.++ v
-  where
-    diff = k - UV.length v
+    (as, bs) = L.splitAt (P.length xs - k) xs
 
 padPKCS7' :: Int -> ByteString -> ByteString
 padPKCS7' blockSize b = B.append b (B.replicate r $ fromIntegral r)
@@ -63,27 +39,22 @@ padPKCS7' blockSize b = B.append b (B.replicate r $ fromIntegral r)
 padPKCS7 :: ByteString -> ByteString
 padPKCS7 = padPKCS7' 16
 
+stripPKCS7 :: ByteString -> Maybe ByteString
+stripPKCS7 b
+  | B.length padding /= fromIntegral c = Nothing
+  | otherwise = Just $ B.reverse b''
+  where
+    b' = B.reverse b
+    c = B.head b'
+    (padding, b'') = B.span (== c) b'
+
 chunksOfBS :: Int -> ByteString -> [ByteString]
 chunksOfBS k = fmap B.pack . chunksOf k . B.unpack
-
--- TODO would be nice if we didn't have to do the Unbox / Box stuff
--- but dunno how to provide an output type
-chunkBy :: UV.Unbox a => Int -> UV.Vector a -> V.Vector (UV.Vector a)
-chunkBy k v = V.reverse $ chunkBy' V.empty k v
-  where
-    chunkBy' :: UV.Unbox a => V.Vector (UV.Vector a) -> Int -> UV.Vector a -> V.Vector (UV.Vector a)
-    chunkBy' acc k v =
-      if UV.null xs'
-        then acc'
-        else chunkBy' acc' k xs'
-      where
-        (xs, xs') = UV.splitAt k v
-        acc' = V.cons xs acc
 
 countDupeChunksOf :: Int -> ByteString -> Int
 countDupeChunksOf k b = P.length chunks - P.length (L.nub chunks)
   where
-    chunks = chunksOf 16 . C8.unpack $ b
+    chunks = chunksOf k . C8.unpack $ b
 
 reverseMap :: (Ord a, Ord b) => M.Map a b -> M.Map b a
 reverseMap m = M.fromList [(v, k) | (k, v) <- M.toList m]
@@ -91,29 +62,15 @@ reverseMap m = M.fromList [(v, k) | (k, v) <- M.toList m]
 byteStringXor :: ByteString -> ByteString -> ByteString
 byteStringXor a b = B.pack $ B.zipWith xor a b
 
-randomByteString :: Int -> IO ByteString
-randomByteString k = do
-  rands <- M.replicateM k (randomIO :: IO Word8)
-  return $ B.pack rands
-
-coinFlip :: IO Bool
-coinFlip = do
-  randomIO :: IO Bool
-
-randomSample :: [a] -> IO a
-randomSample xs = do
-    i <- uniformRM (0, P.length xs - 1) globalStdGen
-    return $ xs !! i
-
 parseKeyValue :: Char -> String -> Either ParseError (M.Map String String)
 parseKeyValue delim = parse keyValue "(unknown)"
   where
     keyValue :: GenParser Char st (M.Map String String)
     keyValue = do
       let pair = do
-            let token = many1 (noneOf (delim : "="))
-            k <- token
-            v <- char '=' >> token
+            let tok = many1 (noneOf (delim : "="))
+            k <- tok
+            v <- char '=' >> tok
             return (k, v)
       M.fromList <$> sepBy pair (char delim)
 
@@ -130,17 +87,5 @@ pseudoUrlEncode = B.foldl' go B.empty
 profileFor :: ByteString -> ByteString
 profileFor email = B.concat [C8.pack "email=", pseudoUrlEncode email, C8.pack "&uid=10&role=user"]
 
-seededRandomByteString :: Int -> Int -> ByteString
-seededRandomByteString length = B.pack . P.take length . L.unfoldr (Just . randomR (0, 255)) . mkStdGen
-
 commonPrefix :: ByteString -> ByteString -> ByteString
 commonPrefix a b = B.pack . fmap fst . P.takeWhile (uncurry (==)) $ B.zip a b
-
-stripPKCS7 :: ByteString -> Maybe ByteString
-stripPKCS7 b
-  | B.length padding /= fromIntegral c = Nothing
-  | otherwise = Just $ B.reverse b''
-  where
-    b' = B.reverse b
-    c = B.head b'
-    (padding, b'') = B.span (== c) b'
