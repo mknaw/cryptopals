@@ -1,10 +1,17 @@
 {-# OPTIONS_GHC -Wall #-}
 
 module Lib.Crypto
-  ( decryptCBCManual,
-    encryptCBCManual,
+  ( bsToInteger,
+    decryptCBC,
+    encryptCBC,
+    decryptCTR,
     englishScore,
+    incrementBS,
+    incrementCTR,
+    integerToBS,
     hammingDistance,
+    keyStreamCTR,
+    padZero,
     repeatingKeyXor,
     sampleBytesDistance,
     SingleCharXorSolution (..),
@@ -17,11 +24,14 @@ import Crypto.Cipher.AES (AES, decryptECB, encryptECB)
 import Data.Bits
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Char8 as C8
 import Data.Char (chr, ord, toUpper)
 import Data.Function
 import Data.List as L
 import Data.List.Split (chunksOf)
+import Data.Word
+import GHC.ByteOrder
 import Lib.Util
 import Prelude hiding ((++))
 import qualified Prelude as P
@@ -79,16 +89,58 @@ sampleBytesDistance b keySize = fromIntegral s / fromIntegral keySize
 transposeBytes :: Int -> ByteString -> [ByteString]
 transposeBytes keySize = B.transpose . chunksOfBS keySize
 
-encryptCBCManual :: ByteString -> AES -> ByteString -> ByteString
-encryptCBCManual iv key p = B.concat . P.tail $ P.scanl go iv p'
+encryptCBC :: ByteString -> AES -> ByteString -> ByteString
+encryptCBC iv key p = B.concat . P.tail $ P.scanl go iv p'
   where
     p' = fmap C8.pack . chunksOf 16 . C8.unpack $ p
 
     go :: ByteString -> ByteString -> ByteString
     go prev next = encryptECB key (byteStringXor prev next)
 
-decryptCBCManual :: ByteString -> AES -> ByteString -> ByteString
-decryptCBCManual iv key c = byteStringXor cipherShifted plain
+decryptCBC :: ByteString -> AES -> ByteString -> ByteString
+decryptCBC iv key c = byteStringXor cipherShifted plain
   where
     plain = decryptECB key c
     cipherShifted = B.append iv (B.take (B.length c - B.length iv) c)
+
+bsToInteger :: ByteString -> Integer
+bsToInteger s = P.sum $ P.zipWith (*) [256 ^ i | i <- [0 :: Integer ..]] xs
+  where
+    xs = fmap fromIntegral . B.unpack . B.reverse $ s
+
+integerToBS :: Integer -> ByteString
+integerToBS x
+  | x == 0 = B.pack [0]
+  | otherwise = B.pack $ go [] x
+  where
+    go :: [Word8] -> Integer -> [Word8]
+    go acc x'
+      | x' == 0 = acc
+      | otherwise = go (fromIntegral (x' `rem` 256) : acc) (x' `div` 256)
+
+padZero :: Int -> ByteString -> ByteString
+padZero k s = B.replicate (k - B.length s) 0 <> s
+
+incrementBS :: ByteString -> ByteString
+incrementBS b = integerToBS (bsToInteger b + 1)
+
+incrementCTR :: ByteOrder -> ByteString -> ByteString
+incrementCTR bo s = nonce <> inc counter
+  where
+    nonce = B.take 8 s
+    counter = B.drop 8 s
+    inc = case bo of
+      BigEndian -> padZero 8 . incrementBS
+      LittleEndian -> B.reverse . padZero 8 . incrementBS . B.reverse
+
+keyStreamCTR :: ByteOrder -> AES -> BL.ByteString
+keyStreamCTR bo key = BL.concat $ BL.fromStrict . encryptECB key <$> iterate (incrementCTR bo) (nonce <> counter)
+  where
+    nonce = padZero 8 . B.reverse . integerToBS $ 0
+    counter = padZero 8 . B.reverse . integerToBS $ 0
+
+encryptCTR :: ByteOrder -> AES -> ByteString -> ByteString
+encryptCTR bo key plain = B.pack $ BL.zipWith xor (BL.fromStrict plain) (keyStreamCTR bo key)
+
+decryptCTR :: ByteOrder -> AES -> ByteString -> ByteString
+decryptCTR = encryptCTR

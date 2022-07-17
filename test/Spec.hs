@@ -34,8 +34,8 @@ test_manualCBC = do
   let plain = "lorem ipsum dolor sit amet, cons"
   let iv = "deadbeefdeadbeef"
   let key = initAES . C8.pack $ "yellow submarine"
-  let cipher = encryptCBCManual iv key plain
-  let decrypted = decryptCBCManual iv key cipher
+  let cipher = encryptCBC iv key plain
+  let decrypted = decryptCBC iv key cipher
   assertEqual "manualCBC" plain decrypted
 
 test_commonPrefix :: Assertion
@@ -46,6 +46,15 @@ test_commonPrefix = do
   assertEqual "commonPrefix" "foobar" (commonPrefix a b)
   assertEqual "commonPrefix" B.empty (commonPrefix a c)
 
+test_bsToInteger :: Assertion 
+test_bsToInteger = do
+  assertEqual "bsToInteger" 16777217 (bsToInteger "\SOH\NUL\NUL\SOH")
+
+test_integerToBS :: Assertion 
+test_integerToBS = do
+  assertEqual "integerToBS" "\NUL" (integerToBS 0)
+  assertEqual "integerToBS" "\SOH\NUL\NUL\SOH" (integerToBS 16777217)
+
 main :: IO ()
 main = do
   let tests =
@@ -55,7 +64,9 @@ main = do
             TestCase test_B64decode,
             TestCase test_hammingDistance,
             TestCase test_manualCBC,
-            TestCase test_commonPrefix
+            TestCase test_commonPrefix,
+            TestCase test_bsToInteger,
+            TestCase test_integerToBS
           ]
   _ <- runTestTT tests
   return ()

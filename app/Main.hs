@@ -12,6 +12,7 @@ import Data.Function
 import qualified Data.List as L
 import Data.Map as M
 import Data.Maybe (isJust, isNothing)
+import GHC.ByteOrder
 import Lib.Crypto
 import Lib.Crypto.ECBOracle
 import qualified Lib.Encode.Base64 as B64
@@ -102,7 +103,7 @@ challenge10 = do
   cipher <- B64.decode . C8.pack . P.concat . lines <$> readFile "static/10.txt"
   let iv = B.replicate 16 0
   let key = initAES $ C8.pack "YELLOW SUBMARINE"
-  let decrypted = decryptCBCManual iv key cipher
+  let decrypted = decryptCBC iv key cipher
   assertEqual "Challenge 10" "I'm back and I'm ringin' the bell " (C8.unpack . P.head . C8.lines $ decrypted)
 
 encryptChallenge11 :: ByteString -> IO (Bool, ByteString)
@@ -115,7 +116,7 @@ encryptChallenge11 plaintext = do
   useCBC <- coinFlip
   let cipher =
         if useCBC
-          then encryptCBCManual iv key plaintext'
+          then encryptCBC iv key plaintext'
           else encryptECB key plaintext'
 
   return (useCBC, cipher)
@@ -220,7 +221,7 @@ challenge15 = do
   assertBool "Challenge 15" (isNothing $ stripPKCS7 input'')
 
 challenge16Encrypt :: ByteString -> AES -> ByteString -> ByteString
-challenge16Encrypt iv key input = encryptCBCManual iv key plaintext
+challenge16Encrypt iv key input = encryptCBC iv key plaintext
   where
     plaintext =
       padPKCS7 . B.concat $
@@ -235,7 +236,7 @@ challenge16IsAdmin iv key cipher =
     Just "true" -> True
     _ -> False
   where
-    m = fromRight M.empty . parseKeyValue ';' . C8.unpack $ decryptCBCManual iv key cipher
+    m = fromRight M.empty . parseKeyValue ';' . C8.unpack $ decryptCBC iv key cipher
 
 -- TODO appears to fail occasionally with some (iv, key)s
 challenge16 :: Assertion
@@ -261,7 +262,7 @@ challenge17Encrypt = do
   iv <- randomByteString 16
   key <- initAES <$> randomByteString 16
   cipher <-
-    encryptCBCManual iv key . padPKCS7
+    encryptCBC iv key . padPKCS7
       <$> randomSample
         [ "MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc=",
           "MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic=",
@@ -279,7 +280,7 @@ challenge17Encrypt = do
 type PaddingOracle = ByteString -> Bool
 
 challenge17Oracle :: ByteString -> AES -> PaddingOracle
-challenge17Oracle = (((isJust . stripPKCS7) .) .) . decryptCBCManual
+challenge17Oracle = (((isJust . stripPKCS7) .) .) . decryptCBC
 
 byteFlips :: Int -> ByteString -> [ByteString]
 byteFlips k b = byteStringXor b . B.pack <$> xs
@@ -310,7 +311,14 @@ challenge17 = do
   (iv, key, cipher) <- challenge17Encrypt
   let oracle = challenge17Oracle iv key
   let decrypted = byteStringXor cipher . B.concat $ decryptBlock oracle <$> (P.tail . chunksOfBS 16 $ cipher)
-  assertEqual "Challenge 17" (B.drop 16 $ decryptCBCManual iv key cipher) decrypted
+  assertEqual "Challenge 17" (B.drop 16 $ decryptCBC iv key cipher) decrypted
+
+challenge18 :: Assertion
+challenge18 = do
+  let key = initAES . C8.pack $ "YELLOW SUBMARINE"
+  let cipher = B64.decode "L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ=="
+  let decrypted = decryptCTR LittleEndian key cipher
+  assertEqual "Challenge 18" "Yo, VIP Let's kick it Ice, Ice, baby Ice, Ice, baby " decrypted
 
 main :: IO ()
 main = do
@@ -332,7 +340,8 @@ main = do
             TestCase challenge14,
             TestCase challenge15,
             TestCase challenge16,
-            TestCase challenge17
+            TestCase challenge17,
+            TestCase challenge18
           ]
   _ <- runTestTT tests
   return ()
