@@ -320,6 +320,78 @@ challenge18 = do
   let decrypted = decryptCTR LittleEndian key cipher
   assertEqual "Challenge 18" "Yo, VIP Let's kick it Ice, Ice, baby Ice, Ice, baby " decrypted
 
+challenge19Data :: IO [ByteString]
+challenge19Data = do
+  key <- initAES <$> randomByteString 16
+  return $
+    encryptCTR LittleEndian key . B64.decode
+      <$> [ "SSBoYXZlIG1ldCB0aGVtIGF0IGNsb3NlIG9mIGRheQ==",
+            "Q29taW5nIHdpdGggdml2aWQgZmFjZXM=",
+            "RnJvbSBjb3VudGVyIG9yIGRlc2sgYW1vbmcgZ3JleQ==",
+            "RWlnaHRlZW50aC1jZW50dXJ5IGhvdXNlcy4=",
+            "SSBoYXZlIHBhc3NlZCB3aXRoIGEgbm9kIG9mIHRoZSBoZWFk",
+            "T3IgcG9saXRlIG1lYW5pbmdsZXNzIHdvcmRzLA==",
+            "T3IgaGF2ZSBsaW5nZXJlZCBhd2hpbGUgYW5kIHNhaWQ=",
+            "UG9saXRlIG1lYW5pbmdsZXNzIHdvcmRzLA==",
+            "QW5kIHRob3VnaHQgYmVmb3JlIEkgaGFkIGRvbmU=",
+            "T2YgYSBtb2NraW5nIHRhbGUgb3IgYSBnaWJl",
+            "VG8gcGxlYXNlIGEgY29tcGFuaW9u",
+            "QXJvdW5kIHRoZSBmaXJlIGF0IHRoZSBjbHViLA==",
+            "QmVpbmcgY2VydGFpbiB0aGF0IHRoZXkgYW5kIEk=",
+            "QnV0IGxpdmVkIHdoZXJlIG1vdGxleSBpcyB3b3JuOg==",
+            "QWxsIGNoYW5nZWQsIGNoYW5nZWQgdXR0ZXJseTo=",
+            "QSB0ZXJyaWJsZSBiZWF1dHkgaXMgYm9ybi4=",
+            "VGhhdCB3b21hbidzIGRheXMgd2VyZSBzcGVudA==",
+            "SW4gaWdub3JhbnQgZ29vZCB3aWxsLA==",
+            "SGVyIG5pZ2h0cyBpbiBhcmd1bWVudA==",
+            "VW50aWwgaGVyIHZvaWNlIGdyZXcgc2hyaWxsLg==",
+            "V2hhdCB2b2ljZSBtb3JlIHN3ZWV0IHRoYW4gaGVycw==",
+            "V2hlbiB5b3VuZyBhbmQgYmVhdXRpZnVsLA==",
+            "U2hlIHJvZGUgdG8gaGFycmllcnM/",
+            "VGhpcyBtYW4gaGFkIGtlcHQgYSBzY2hvb2w=",
+            "QW5kIHJvZGUgb3VyIHdpbmdlZCBob3JzZS4=",
+            "VGhpcyBvdGhlciBoaXMgaGVscGVyIGFuZCBmcmllbmQ=",
+            "V2FzIGNvbWluZyBpbnRvIGhpcyBmb3JjZTs=",
+            "SGUgbWlnaHQgaGF2ZSB3b24gZmFtZSBpbiB0aGUgZW5kLA==",
+            "U28gc2Vuc2l0aXZlIGhpcyBuYXR1cmUgc2VlbWVkLA==",
+            "U28gZGFyaW5nIGFuZCBzd2VldCBoaXMgdGhvdWdodC4=",
+            "VGhpcyBvdGhlciBtYW4gSSBoYWQgZHJlYW1lZA==",
+            "QSBkcnVua2VuLCB2YWluLWdsb3Jpb3VzIGxvdXQu",
+            "SGUgaGFkIGRvbmUgbW9zdCBiaXR0ZXIgd3Jvbmc=",
+            "VG8gc29tZSB3aG8gYXJlIG5lYXIgbXkgaGVhcnQs",
+            "WWV0IEkgbnVtYmVyIGhpbSBpbiB0aGUgc29uZzs=",
+            "SGUsIHRvbywgaGFzIHJlc2lnbmVkIGhpcyBwYXJ0",
+            "SW4gdGhlIGNhc3VhbCBjb21lZHk7",
+            "SGUsIHRvbywgaGFzIGJlZW4gY2hhbmdlZCBpbiBoaXMgdHVybiw=",
+            "VHJhbnNmb3JtZWQgdXR0ZXJseTo=",
+            "QSB0ZXJyaWJsZSBiZWF1dHkgaXMgYm9ybi4="
+          ]
+
+challenge19 :: Assertion
+challenge19 = do
+  ciphers <- challenge19Data
+  let c = L.maximumBy (compare `on` B.length) ciphers
+  -- Per suggestion, deciphered this semi-manually with the aid of the following:
+  --
+  -- cribDrag :: ByteString -> ByteString -> IO ()
+  -- cribDrag guess cipher = mapM_ print $ do
+  --   (i, w) <- zip [0 ..] $ windowsOf (B.length guess) cipher
+  --   let xord = byteStringXor guess w
+  --   if i == 0
+  --     then return (i, xord)
+  --     else mempty
+  --   where
+  --     windowsOf :: Int -> ByteString -> [ByteString]
+  --     windowsOf k s
+  --       | B.length s < k = []
+  --       | otherwise = B.take k s : windowsOf k (B.tail s)
+
+  let key = byteStringXor c "He, too, has been changed in his turn,"
+  let plains = [byteStringXor x key | x <- ciphers]
+
+  assertEqual "Challenge 19" "I have met them at close of day" (P.head plains)
+  assertEqual "Challenge 19" "A terrible beauty is born." (P.last plains)
+
 main :: IO ()
 main = do
   let tests =
@@ -341,7 +413,8 @@ main = do
             TestCase challenge15,
             TestCase challenge16,
             TestCase challenge17,
-            TestCase challenge18
+            TestCase challenge18,
+            TestCase challenge19
           ]
   _ <- runTestTT tests
   return ()

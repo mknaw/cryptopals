@@ -5,6 +5,7 @@ module Lib.Crypto
     decryptCBC,
     encryptCBC,
     decryptCTR,
+    encryptCTR,
     englishScore,
     incrementBS,
     incrementCTR,
@@ -24,8 +25,8 @@ import Crypto.Cipher.AES (AES, decryptECB, encryptECB)
 import Data.Bits
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Char8 as C8
+import qualified Data.ByteString.Lazy as BL
 import Data.Char (chr, ord, toUpper)
 import Data.Function
 import Data.List as L
