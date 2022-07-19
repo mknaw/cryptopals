@@ -392,6 +392,19 @@ challenge19 = do
   assertEqual "Challenge 19" "I have met them at close of day" (P.head plains)
   assertEqual "Challenge 19" "A terrible beauty is born." (P.last plains)
 
+challenge20 :: Assertion
+challenge20 = do
+  key <- initAES <$> randomByteString 16
+  ciphers <- fmap (encryptCTR LittleEndian key . B64.decode . C8.pack) . lines <$> readFile "static/20.txt"
+  let len = P.minimum $ B.length <$> ciphers
+  let transposed = transposeBytes len . B.concat $ B.take len <$> ciphers
+  let solved = singleCharXorSolver <$> transposed
+  let key' = C8.pack $ _char <$> solved
+  let plains = byteStringXor key' <$> ciphers
+  assertEqual "Challenge 20" "I'm rated \"R\"...this is a warning, ya better void / P" (P.head plains)
+  assertEqual "Challenge 20" "And we outta here / Yo, what happened to peace? / Pea" (P.last plains)
+
+
 main :: IO ()
 main = do
   let tests =
@@ -414,7 +427,8 @@ main = do
             TestCase challenge16,
             TestCase challenge17,
             TestCase challenge18,
-            TestCase challenge19
+            TestCase challenge19,
+            TestCase challenge20
           ]
   _ <- runTestTT tests
   return ()

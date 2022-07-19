@@ -51,7 +51,9 @@ englishScore = P.sum . P.map (score . toUpper) . C8.unpack
       | i `P.elem` "WYGPB" = 2
       | i `P.elem` "VK" = 2
       | i `P.elem` "QJXZ" = 2
+      | i `P.elem` "[\\]^_`" = -10
       | ord i < 20 = -10
+      | ord i > 127 = -20
       | otherwise = 0
 
 allSingleCharXors :: ByteString -> [ByteString]
