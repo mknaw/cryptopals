@@ -9,12 +9,13 @@ module Lib.Util.Random
 where
 
 import Control.Monad as M
+import Data.Bits (Bits (shiftR, xor, shiftL, (.&.)))
 import Data.ByteString as B
 import Data.List as L
 import Data.Word
-import Prelude as P
 import System.Random
 import System.Random.Stateful
+import Prelude as P
 
 randomByteString :: Int -> IO ByteString
 randomByteString k = do

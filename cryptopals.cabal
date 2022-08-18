@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b35dc226e18b5ed5fae5f2ef403232dd3823eb8391bcf86e8e045c599414a709
+-- hash: 9bd548f53002123137bced350cd68c6d5f402171c0229fef0c21e9c31e331f26
 
 name:           cryptopals
 version:        0.1.0.0
@@ -32,6 +32,7 @@ library
       Lib.Encode.Hex
       Lib.Util
       Lib.Util.Random
+      Lib.Util.Random.MT19937
   other-modules:
       Paths_cryptopals
   hs-source-dirs:
@@ -42,6 +43,7 @@ library
     , bytestring
     , cipher-aes
     , containers
+    , mtl
     , parsec
     , random
     , split
@@ -61,6 +63,7 @@ executable cryptopals-exe
     , cipher-aes
     , containers
     , cryptopals
+    , mtl
     , parsec
     , random
     , split
@@ -81,6 +84,7 @@ test-suite cryptopals-test
     , cipher-aes
     , containers
     , cryptopals
+    , mtl
     , parsec
     , random
     , split

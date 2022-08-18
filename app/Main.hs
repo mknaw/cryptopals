@@ -19,7 +19,8 @@ import qualified Lib.Encode.Base64 as B64
 import qualified Lib.Encode.Hex as HEX
 import Lib.Util
 import Lib.Util.Random
-import System.Random (Random (randomR), mkStdGen, randomRIO)
+import Lib.Util.Random.MT19937
+import System.Random (Random (randomR), RandomGen (genWord32), mkStdGen, randomRIO)
 import Test.HUnit
 import Prelude hiding ((++))
 import qualified Prelude as P
@@ -404,6 +405,26 @@ challenge20 = do
   assertEqual "Challenge 20" "I'm rated \"R\"...this is a warning, ya better void / P" (P.head plains)
   assertEqual "Challenge 20" "And we outta here / Yo, what happened to peace? / Pea" (P.last plains)
 
+challenge21 :: Assertion
+challenge21 = do
+  let myMT = initMT19937 5489
+  let actual = P.take 10 . P.tail $ fst <$> iterate f (0, myMT)
+  let expected =
+        [ 3499211612,
+          581869302,
+          3890346734,
+          3586334585,
+          545404204,
+          4161255391,
+          3922919429,
+          949333985,
+          2715962298,
+          1323567403
+        ]
+
+  assertEqual "Challenge 21" expected actual
+  where
+    f = genWord32 . snd
 
 main :: IO ()
 main = do
@@ -428,7 +449,8 @@ main = do
             TestCase challenge17,
             TestCase challenge18,
             TestCase challenge19,
-            TestCase challenge20
+            TestCase challenge20,
+            TestCase challenge21
           ]
   _ <- runTestTT tests
   return ()

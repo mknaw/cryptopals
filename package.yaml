@@ -25,6 +25,7 @@ dependencies:
 - cipher-aes
 - containers
 - HUnit
+- mtl
 - parsec
 - random
 - split
